@@ -14,8 +14,16 @@ from pytorch_lightning import loggers as pl_loggers
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 
 from torchgeo.trainers import (
+#    EnviroatlasDataModule,
+ #   EnviroatlasSegmentationTask,
+#    EnviroatlasPriorDataModule,
+#    EnviroatlasPriorSegmentationTask,
+#    ChesapeakeCVPRLearnPriorTask,
+#    ChesapeakeCVPRLearnPriorDataModule,
     ChesapeakeCVPRDataModule,
     ChesapeakeCVPRSegmentationTask,
+    ChesapeakeCVPRPriorDataModule,
+    ChesapeakeCVPRPriorSegmentationTask,
     CycloneDataModule,
     CycloneSimpleRegressionTask,
     LandcoverAIDataModule,
@@ -29,6 +37,13 @@ from torchgeo.trainers import (
 TASK_TO_MODULES_MAPPING: Dict[
     str, Tuple[Type[pl.LightningModule], Type[pl.LightningDataModule]]
 ] = {
+#     "enviroatlas": (EnviroatlasSegmentationTask, EnviroatlasDataModule),
+#     "enviroatlas_learn_on_prior": (EnviroatlasPriorSegmentationTask, 
+#                                   EnviroatlasPriorDataModule),
+#     "chesapeake_learn_the_prior": (ChesapeakeCVPRLearnPriorTask, 
+#                                    ChesapeakeCVPRLearnPriorDataModule),
+    "chesapeake_learn_on_prior": (ChesapeakeCVPRPriorSegmentationTask,
+                                  ChesapeakeCVPRPriorDataModule),
     "chesapeake_cvpr": (ChesapeakeCVPRSegmentationTask, ChesapeakeCVPRDataModule),
     "cyclone": (CycloneSimpleRegressionTask, CycloneDataModule),
     "landcoverai": (LandcoverAISegmentationTask, LandcoverAIDataModule),
@@ -150,13 +165,13 @@ def main(conf: DictConfig) -> None:
     checkpoint_callback = ModelCheckpoint(
         monitor="val_loss",
         dirpath=experiment_dir,
-        save_top_k=3,
+        save_top_k=1,
         save_last=True,
     )
     early_stopping_callback = EarlyStopping(
         monitor="val_loss",
         min_delta=0.00,
-        patience=10,
+        patience=20,
     )
 
     trainer_args = cast(Dict[str, Any], OmegaConf.to_object(conf.trainer))

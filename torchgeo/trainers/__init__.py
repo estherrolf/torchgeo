@@ -4,12 +4,15 @@
 """TorchGeo trainers."""
 
 from .chesapeake import ChesapeakeCVPRDataModule, ChesapeakeCVPRSegmentationTask
+from .chesapeake_learn_on_prior import ChesapeakeCVPRPriorDataModule, ChesapeakeCVPRPriorSegmentationTask
 from .cyclone import CycloneDataModule, CycloneSimpleRegressionTask
 from .landcoverai import LandcoverAIDataModule, LandcoverAISegmentationTask
 from .naipchesapeake import NAIPChesapeakeDataModule, NAIPChesapeakeSegmentationTask
 from .sen12ms import SEN12MSDataModule, SEN12MSSegmentationTask
 
 __all__ = (
+    "ChesapeakeCVPRPriorSegmentationTask",
+    "ChesapeakeCVPRPriorDataModule",
     "ChesapeakeCVPRSegmentationTask",
     "ChesapeakeCVPRDataModule",
     "CycloneDataModule",

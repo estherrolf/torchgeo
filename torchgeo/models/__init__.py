@@ -4,7 +4,7 @@
 """TorchGeo models."""
 
 from .fccd import FCEF, FCSiamConc, FCSiamDiff
-from .fcn import FCN
+from .fcn import FCN, FCN_modified, FCN_larger_modified
 
 __all__ = ("FCN", "FCEF", "FCSiamConc", "FCSiamDiff")
 
