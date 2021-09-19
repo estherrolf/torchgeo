@@ -353,7 +353,7 @@ class ChesapeakeCVPRPriorDataModule(LightningDataModule):
     def __init__(
         self,
         root_dir: str,
-        train_state: str,
+        states_str: str,
         prior_version: str,
         patches_per_tile: int = 200,
         patch_size: int = 128,
@@ -372,31 +372,42 @@ class ChesapeakeCVPRPriorDataModule(LightningDataModule):
         Args:
             root_dir: The ``root`` arugment to pass to the ChesapeakeCVPR Dataset
                 classes
-            train_state: The state code to use to train the model, e.g. "ny"
+            states: The states code to use to train the model, e.g. "ny"
             patches_per_tile: The number of patches per tile to sample
             batch_size: The batch size to use in all created DataLoaders
             num_workers: The number of workers to use in all created DataLoaders
         """
         super().__init__()  # type: ignore[no-untyped-call]
-        assert train_state in ["md", "de", "ny", "pa", "va", "wv"]
+        
+        states = states_str.split('+')
+        pix_to_m_scale = 2.0
+        for state in states:
+            assert state in ["md", "de", "ny", "pa", "va", "wv"]
+            if state in ["ny","pa"]:
+                # these sometimes don't fit with just 2
+                pix_to_m_scale = 3
+            
 
         self.root_dir = root_dir
-        self.train_state = train_state
+        self.states = states
         self.prior_version = prior_version
         self.layers = ["naip-new", f"prior_{prior_version}", "lc"]
         self.patches_per_tile = patches_per_tile
         print(patches_per_tile, ' patches_per_tile')
         self.patch_size = patch_size
-        self.original_patch_size = int(patch_size * 2.0)
+        self.original_patch_size = int(patch_size * pix_to_m_scale)
         self.batch_size = batch_size
         print(batch_size, ' batch size')
         self.num_workers = num_workers
         self.prior_smoothing_constant = prior_smoothing_constant
         self.condense_road_and_impervious = condense_road_and_impervious
         self.condense_barren = condense_barren
-        self.train_set = train_set
-        self.val_set = val_set
-        self.test_set = test_set
+        self.train_sets = [f"{state}-{train_set}" for state in states]
+        self.val_sets = [f"{state}-{val_set}" for state in states]
+        self.test_sets = [f"{state}-{test_set}" for state in states]
+        print(f'train sets are: {self.train_sets}')
+        print(f'val sets are: {self.val_sets}')
+        print(f'test sets are: {self.test_sets}')
         
     def pad_to(
         self, size: int = 512, image_value: int = 0, mask_value: int = 0
@@ -456,13 +467,6 @@ class ChesapeakeCVPRPriorDataModule(LightningDataModule):
         impervious_idxs_highres_orig = [4,5,6]
         impervious_idx_condesed = [4]
         if self.condense_barren:
-#             # condense to just four and reindex to drop 0
-#             p_all = sample['mask'].detach().clone() # copy the tensor
-#             # condense by adding all barren and roads together
-#             p_all[4] = p_all[4:].sum(dim=0)
-#             # drop 0
-#             sample["mask"] = p_all[1:5]
-
             # prior mask should be good to go -- we'll normalize it below
             
             # Now remap all the highres labels
@@ -500,65 +504,6 @@ class ChesapeakeCVPRPriorDataModule(LightningDataModule):
         sample["mask"] = sample["mask"]#.squeeze()
         sample["highres_labels"] = sample["highres_labels"]#.squeeze()
         return sample
-    
-    
-        
-#     def custom_transform(
-#         self, sample: Dict[str, Any], patch_size: int = 128
-#     ) -> Dict[str, Any]:
-#         """Transform a single sample from the Dataset."""
-#         # Center crop
-        
-#         num_image_channels, height, width = sample["image"].shape
-#         num_prior_channels = sample["mask"].shape[0]
-# #         print(sample["image"].shape)
-#         #print(height, width)
-# #         print(patch_size)
-# #        print(patch_size)
-#         # If we somehow sample a patch that is smaller than the `patch_size` we want to
-#         # sample, then we create a nodata patch instead
-#         if height < patch_size or width < patch_size:
-#             print(self.original_patch_size)
-#             print(patch_size)
-#             print(height, width)
-#             print()
-#             print("PATCH SIZE TOO BIG FOR SUBSETTED TILE")
-#             #assert False # just throw an assert :(
-
-#         y1 = (height - patch_size) // 2
-#         x1 = (width - patch_size) // 2
-#         sample["image"] = sample["image"][:, y1 : y1 + patch_size, x1 : x1 + patch_size]
-#         sample["mask"] = sample["mask"][:, y1 : y1 + patch_size, x1 : x1 + patch_size]
-        
-#         # separate out the highres labels
-#         sample['highres_labels'] = sample['mask'][-1] 
-#         sample["mask"] = sample["mask"][:-1]
-        
-#         if self.condense_barren:
-#             # condense to just four and don't reindex i.e. don't drop 0
-#             sample["mask"] = sample["mask"][:5]
-#             sample["highres_labels"][sample["highres_labels"] > 4] = 3
-            
-#         elif self.condense_road_and_impervious:
-#             impervious_idx = 5
-#             road_idx = 6
-#             # recast road idx to impervious
-#             sample['highres_labels'][sample['highres_labels'] == road_idx] = impervious_idx
-#             # subtract 1
-#             sample['highres_labels'] = sample['highres_labels'] - 1
-            
-#             # add roads to impervious then remove road index
-#             sample["mask"][impervious_idx] += sample["mask"][road_idx]
-#             # remove road index and nodata
-#             sample["mask"] = sample["mask"][1:-1]
-            
-
-#         # make sure prior is normalized, then smooth
-#         sample["mask"] = nn.functional.normalize(sample["mask"].float(),p=1,dim=0)
-#         sample["mask"] = nn.functional.normalize(sample["mask"] + self.prior_smoothing_constant,p=1,dim=0)
-#         sample["image"] = (sample["image"] / 255.0).float()
-
-#         return sample
 
     def prepare_data(self) -> None:
         """Confirms that the dataset is downloaded on the local node.
@@ -566,7 +511,7 @@ class ChesapeakeCVPRPriorDataModule(LightningDataModule):
         """
         ChesapeakeCVPRPrior(
             self.root_dir,
-            split=f"{self.train_state}-{self.train_set}",
+            splits=self.train_sets,
             layers=self.layers,
             transforms=None,
             download=False,
@@ -599,10 +544,9 @@ class ChesapeakeCVPRPriorDataModule(LightningDataModule):
         )
         
         
-        print('training on ',self.train_set)
         self.train_dataset = ChesapeakeCVPRPrior(
             self.root_dir,
-            split=f"{self.train_state}-{self.train_set}",
+            splits=self.train_sets,
             layers=self.layers,
             transforms=train_transforms,
             download=False,
@@ -610,7 +554,7 @@ class ChesapeakeCVPRPriorDataModule(LightningDataModule):
         )
         self.val_dataset = ChesapeakeCVPRPrior(
             self.root_dir,
-            split=f"{self.train_state}-{self.val_set}",
+            splits=self.val_sets,
             layers=self.layers,
             transforms=val_transforms,
             download=False,
@@ -618,7 +562,7 @@ class ChesapeakeCVPRPriorDataModule(LightningDataModule):
         )
         self.test_dataset = ChesapeakeCVPRPrior(
             self.root_dir,
-            split=f"{self.train_state}-{self.test_set}",
+            splits=self.test_sets,
             layers=self.layers,
             transforms=test_transforms,
             download=False,

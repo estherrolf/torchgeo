@@ -56,6 +56,8 @@ from .so2sat import So2Sat
 from .spacenet import SpaceNet1
 from .utils import BoundingBox, collate_dict
 
+from .tile import TileInferenceDataset
+
 __all__ = (
     # GeoDataset
     "CanadianBuildingFootprints",
@@ -107,6 +109,7 @@ __all__ = (
     # Base classes
     "GeoDataset",
     "RasterDataset",
+    "TileInferenceDataset",
     "VectorDataset",
     "VisionDataset",
     "ZipDataset",

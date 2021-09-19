@@ -9,22 +9,17 @@ import subprocess
 from multiprocessing import Process, Queue
 
 # list of GPU IDs that we want to use, one job will be started for every ID in the list
-GPUS = [0,1,2,3]#, 1] 
+GPUS = [0,1,2]#,3]
 TEST_MODE = False  # if False then print out the commands to be run, if True then run
 
 # Hyperparameter options
-training_set_options = ["de"]
+training_set_options = ["ny", "pa","ny+pa"]
 model_options = ['fcn']#, 'unet']
-lr_options = [1e-5]
+lr_options = [1e-4]
 
-loss_options = ['qr_forward']#,'qr_reverse']
-prior_version_options = [#'from_cooccurrences_0_0_no_osm_no_buildings',
-                         'from_cooccurrences_101_15_no_osm_no_buildings',
-                        # 'from_cooccurrences_101_31_no_osm_no_buildings',
-                        # 'from_cooccurrences_101_51_no_osm_no_buildings'
-                        ]
-#additive_smooth_options = [1e-2,1e-4,1e-8]
-additive_smooth_options = [1e-4,1e-8]
+loss_options = ['qr_forward']
+prior_version_options = ['from_cooccurrences_0_0_no_osm_no_buildings']
+additive_smooth_options = [1e-4]
 
 train_set, val_set, test_set = ['test', 'test', 'test']
 
@@ -52,7 +47,7 @@ def main():
     ):
         experiment_name = f"{states_str}_{model}_{lr}_{loss}_{prior_version}_additive_smooth_{additive_smooth}"
 
-        output_dir = "output/hp_gridsearch_de"
+        output_dir = "output/qr_forward_eval"
 
         command = (
             "python train.py program.overwrite=True config_file=conf/chesapeake_learn_on_prior.yml"
@@ -68,7 +63,7 @@ def main():
             + f" experiment.datamodule.val_set={val_set}"
             + f" experiment.datamodule.test_set={test_set}"
             + f" program.output_dir={output_dir}"
-            + f" program.log_dir=logs/hp_gridsearch_de"
+            + f" program.log_dir=logs/qr_forward_eval"
             + " program.data_dir=/home/esther/torchgeo_data/cvpr_chesapeake_landcover"
             + " trainer.gpus='GPU'"
         )
@@ -83,8 +78,6 @@ def main():
         p.start()
     for p in processes:
         p.join()
-        
-    return
 
 
 if __name__ == "__main__":
