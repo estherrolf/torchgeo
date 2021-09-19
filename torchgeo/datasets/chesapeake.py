@@ -6,7 +6,7 @@
 import abc
 import os
 import sys
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Sequence
 
 import fiona
 import numpy as np
@@ -559,7 +559,7 @@ class ChesapeakeCVPRPrior(GeoDataset):
     def __init__(
         self,
         root: str = "data",
-        split: str = "de-train",
+        splits: Sequence[str] = ["de-train"],
         layers: List[str] = ["naip-new", "prior_v1"],
         transforms: Optional[Callable[[Dict[str, Any]], Dict[str, Any]]] = None,
         cache: bool = True,
@@ -585,7 +585,8 @@ class ChesapeakeCVPRPrior(GeoDataset):
             FileNotFoundError: if no files are found in ``root``
             RuntimeError: if ``download=False`` but dataset is missing or checksum fails
         """
-        assert split in self.splits
+        for split in splits:
+            assert split in self.splits
         super().__init__(transforms)  # creates self.index and self.transform
         self.root = root
         self.layers = layers
@@ -607,7 +608,7 @@ class ChesapeakeCVPRPrior(GeoDataset):
         maxt: float = sys.maxsize
         with fiona.open(os.path.join(root, "spatial_index.geojson"), "r") as f:
             for i, row in enumerate(f):
-                if row["properties"]["split"] == split:
+                if row["properties"]["split"] in splits:
                     box = shapely.geometry.shape(row["geometry"])
                     minx, miny, maxx, maxy = box.bounds
                     coords = (minx, maxx, miny, maxy, mint, maxt)
