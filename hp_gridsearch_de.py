@@ -70,7 +70,7 @@ def main():
             + f" experiment.datamodule.val_set={val_set}"
             + f" experiment.datamodule.test_set={test_set}"
             + f" program.output_dir={output_dir}"
-            + f" program.log_dir=logs/hp_gridsearch_de_forward_handmade_prior"
+            + f" program.log_dir=logs/hp_gridsearch_de_forward"
             + " program.data_dir=/home/esther/torchgeo_data/cvpr_chesapeake_landcover"
             + " trainer.gpus='GPU'"
         )
