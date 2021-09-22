@@ -602,20 +602,7 @@ class ChesapeakeCVPRPriorDataModule(LightningDataModule):
                 batch_sampler=sampler,  # type: ignore[arg-type]
                 num_workers=self.num_workers,
             )
-#     def val_dataloader(self) -> DataLoader[Any]:
-#         """Return a DataLoader for validation."""
-#             sampler = GridGeoSampler(
-#             self.val_dataset.index,
-#             size=self.original_patch_size,
-#             stride=self.original_patch_size,
-#         )
-#         return DataLoader(
-#             self.val_dataset,
-#             batch_size=self.batch_size,
-#             sampler=sampler,  # type: ignore[arg-type]
-#             num_workers=self.num_workers,
-# #            pin_memory=False,
-#         )
+
     def test_dataloader(self) -> DataLoader[Any]:
         """Return a DataLoader for testing."""
         sampler = GridGeoSampler(
