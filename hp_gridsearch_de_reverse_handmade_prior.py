@@ -62,6 +62,7 @@ def main():
             + f" experiment.module.segmentation_model={model}"
             + f" experiment.module.learning_rate={lr}"
             + f" experiment.module.loss={loss}"
+            + f" experiment.module.output_smooth={additive_smooth}"
             + f" experiment.datamodule.prior_version={prior_version}"
             + f" experiment.datamodule.prior_smoothing_constant={prior_smooth}"
             + f" experiment.datamodule.states_str={states_str}"
