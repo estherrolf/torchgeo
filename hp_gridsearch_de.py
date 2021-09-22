@@ -9,7 +9,7 @@ import subprocess
 from multiprocessing import Process, Queue
 
 # list of GPU IDs that we want to use, one job will be started for every ID in the list
-GPUS = [2,3]
+GPUS = [0,1,2,3,4,5]
 TEST_MODE = False  # if False then print out the commands to be run, if True then run
 
 # Hyperparameter options
@@ -71,8 +71,7 @@ def main():
             + f" experiment.datamodule.test_set={test_set}"
             + f" program.output_dir={output_dir}"
             + f" program.log_dir=logs/hp_gridsearch_de_forward"
-            + " program.data_dir=/home/esther/torchgeo_data/cvpr_chesapeake_landcover"
-            + " trainer.gpus='GPU'"
+            + " trainer.gpus=[GPU]"
         )
         command = command.strip()
 

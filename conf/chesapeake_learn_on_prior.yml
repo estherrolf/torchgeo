@@ -5,9 +5,9 @@ trainer:
   benchmark: True
 
 program:
-   data_dir: 'data/cvpr_chesapeake_landcover'
+   data_dir: '/home/calebrobinson/ssdprivate/cvpr_chesapeake_landcover'
    overwrite: True
-    
+
 experiment:
   task: "chesapeake_learn_on_prior"
   name: "chesapeake_train_on_prior_ce"
