@@ -19,10 +19,10 @@ lr_options = [1e-4,1e-5]
 
 loss_options = ['qr_forward']
 prior_version_options = [
-                       #'from_cooccurrences_101_15_no_osm_no_buildings',
-                       #'from_cooccurrences_101_31_no_osm_no_buildings',
-                        'from_cooccurrences_101_15',
-                        'from_cooccurrences_101_31',
+                       'from_cooccurrences_101_15_no_osm_no_buildings',
+                       'from_cooccurrences_101_31_no_osm_no_buildings',
+                      #  'from_cooccurrences_101_15',
+                      #  'from_cooccurrences_101_31',
                         ]
 additive_smooth_options = [1e-2,1e-4,1e-8] #se-8]
 prior_smooth_options = [1e-8]
@@ -62,6 +62,7 @@ def main():
             + f" experiment.module.segmentation_model={model}"
             + f" experiment.module.learning_rate={lr}"
             + f" experiment.module.loss={loss}"
+            + f" experiment.module.output_smooth={additive_smooth}"
             + f" experiment.datamodule.prior_version={prior_version}"
             + f" experiment.datamodule.prior_smoothing_constant={prior_smooth}"
             + f" experiment.datamodule.states_str={states_str}"
