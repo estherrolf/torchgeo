@@ -24,7 +24,7 @@ prior_version_options = [
                       #  'from_cooccurrences_101_15',
                      #   'from_cooccurrences_101_31',
                         ]
-additive_smooth_options = [1e-2,1e-4,1e-8] #se-8]
+additive_smooth_options = [1e-2,1e-4,1e-8] 
 prior_smooth_options = [1e-8]
 
 train_set, val_set, test_set = ['test', 'test', 'test']

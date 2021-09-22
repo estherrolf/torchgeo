@@ -18,11 +18,15 @@ model_options = ['fcn']#, 'unet']
 lr_options = [1e-4,1e-5]
 
 loss_options = ['qr_forward']
-prior_version_options = ['from_cooccurrences_0_0',
-                         'from_cooccurrences_101_15']
+prior_version_options = [
+                    #   'from_cooccurrences_101_15_no_osm_no_buildings',
+                    #   'from_cooccurrences_101_31_no_osm_no_buildings',
+                       'from_cooccurrences_101_15',
+                       'from_cooccurrences_101_31',
+                        ]
 
-additive_smooth_options = [1e-2,1e-4,1e-8]
-
+additive_smooth_options = [1e-2,1e-4,1e-8] 
+prior_smooth_options = [1e-8]
 train_set, val_set, test_set = ['test', 'test', 'test']
 
 def do_work(work, gpu_idx):
@@ -39,13 +43,14 @@ def main():
 
     work = Queue()
 
-    for (states_str, model, lr,loss, prior_version, additive_smooth) in itertools.product(
+    for (states_str, model, lr,loss, prior_version, additive_smooth, prior_smooth) in itertools.product(
         training_set_options,
         model_options,
         lr_options,
         loss_options,
         prior_version_options,
         additive_smooth_options,
+        prior_smooth_options
     ):
         experiment_name = f"{states_str}_{model}_{lr}_{loss}_{prior_version}_additive_smooth_{additive_smooth}"
 
@@ -59,7 +64,7 @@ def main():
             + f" experiment.module.loss={loss}"
             + f" experiment.module.output_smooth={additive_smooth}"
             + f" experiment.datamodule.prior_version={prior_version}"
-            + f" experiment.datamodule.prior_smoothing_constant={additive_smooth}"
+            + f" experiment.datamodule.prior_smoothing_constant={prior_smooth}"
             + f" experiment.datamodule.states_str={states_str}"
             + f" experiment.datamodule.train_set={train_set}"
             + f" experiment.datamodule.val_set={val_set}"
