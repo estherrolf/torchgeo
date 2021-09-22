@@ -5,19 +5,19 @@ import numpy as np
 import rasterio
 import torch
 import torch.nn.functional as F
-from fcn import FCN_modified
+from torchgeo.models import FCN_modified
 #from TileDatasets import TileInferenceDataset
-from .datasets import TileInferenceDataset
-NUM_CLASSES = 5
+from torchgeo.datasets import TileInferenceDataset
+NUM_CLASSES = 4
+NUM_FILTERS = 256
 
 NUM_WORKERS = 4
 CHIP_SIZE = 128
-PADDING = 128
+PADDING = 64
 assert PADDING % 2 == 0
 HALF_PADDING = PADDING // 2
 CHIP_STRIDE = CHIP_SIZE - PADDING
 
-from .datasets import TileInferenceDataset
 
 # Modified from script from Caleb to run model forward and produce tifs
 
@@ -74,7 +74,7 @@ def image_transforms(img):
     return img
 
 
-def run_trough_tiles(model_fn,
+def run_through_tiles(model_ckpt_fn,
                      input_fns,
                      output_fns,
                      model='fcn-modified',
@@ -93,12 +93,12 @@ def run_trough_tiles(model_fn,
     device = torch.device(f"cuda:{gpu}")
 
     ## Load model
-    if args.model == "fcn-modified":
-        model = FCN_modified(4, classes=NUM_CLASSES)
+    if model == "fcn-modified":
+        model = FCN_modified(4, classes=NUM_CLASSES, num_filters=NUM_FILTERS)
     else:
         raise ValueError(f"Model {model} not recognized")
 
-    checkpoint = torch.load(model_fn, map_location="cpu")
+    checkpoint = torch.load(model_ckpt_fn, map_location="cpu")
     model.load_state_dict(trim_state_dict(checkpoint["state_dict"]))
     model.eval()
     for param in model.parameters():
@@ -106,8 +106,8 @@ def run_trough_tiles(model_fn,
     model = model.to(device)
 
     # Run the below code for each input file -- currently only one
-    for input_fn, ouput_fn in zip(input_fns, output_fns):
-        
+    for i,(input_fn, output_fn) in enumerate(zip(input_fns, output_fns)):
+        print(f'{i} of {len(input_fns)}')
         ## Setup dataloader
         dataset = TileInferenceDataset(
             input_fn,
@@ -137,7 +137,8 @@ def run_trough_tiles(model_fn,
             data = data.to(device)
             with torch.no_grad():
                 t_output = model(data)
-                t_output = F.softmax(t_output, dim=1).cpu().numpy()
+                t_output = torch.exp(t_output).cpu().numpy().squeeze()
+           #     print(t_output.shape)
 
             for j in range(t_output.shape[0]):
                 y, x = coords[j]
@@ -147,15 +148,25 @@ def run_trough_tiles(model_fn,
 
         output = output / counts
         output_hard = output.argmax(axis=0).astype(np.uint8)
-
         ## Save output
         output_profile = input_profile.copy()
         output_profile["driver"] = "GTiff"
         output_profile["dtype"] = "uint8"
-        output_profile["count"] = 1
+        output_profile["count"] = 4
         output_profile["nodata"] = None
 
+#         print(output[:,:2,:2])
+#         print(output_hard.shape)
+        
+        print(f'writing to: {output_fn}')
         with rasterio.open(output_fn, "w", **output_profile) as f:
+            f.write((output * 255.).astype(np.uint8))
+            
+            
+        output_profile["count"] = 1
+        output_fn_hard = output_fn.replace('.tif','_argmaxed.tif')
+        print(f'writing to: {output_fn_hard}')
+        with rasterio.open(output_fn_hard, "w", **output_profile) as f:
             f.write(output_hard, 1)
             f.write_colormap(
                 1,

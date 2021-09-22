@@ -24,10 +24,10 @@ from .chesapeake import (
 from .cowc import COWC, COWCCounting, COWCDetection
 from .cv4a_kenya_crop_type import CV4AKenyaCropType
 from .cyclone import TropicalCycloneWindEstimation
-# from .enviroatlas import (
-#     Enviroatlas,
-#     EnviroatlasPrior
-# )
+from .enviroatlas import (
+    Enviroatlas,
+    EnviroatlasPrior
+)
 from .etci2021 import ETCI2021
 from .geo import GeoDataset, RasterDataset, VectorDataset, VisionDataset, ZipDataset
 from .gid15 import GID15
@@ -75,6 +75,8 @@ __all__ = (
     "ChesapeakeCVPR",
     "ChesapeakeCVPRPrior",
     "ChesapeakeCVPRWeakInput",
+    "Enviroatlas",
+    "EnviroatlasPrior",
     "Landsat",
     "Landsat1",
     "Landsat2",

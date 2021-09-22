@@ -21,82 +21,59 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter  # type: ignore[attr-defined]
 from torchmetrics import Accuracy, IoU, MetricCollection
 from torchvision.transforms import Compose
-
-from ..datasets import ChesapeakeCVPRPrior
+from ..datasets import Enviroatlas
 from ..samplers import GridGeoSampler, RandomBatchGeoSampler
-from ..models import FCN, FCN_modified
-
-import sys
-sys.path.append('/home/esther/lc-mapping/scripts')
-from nn_functions import cross_entropy_on_prior, loss_on_prior_simple, loss_on_prior_reversed_kl_simple
-import landcover_definitions as lc
-
-
+from ..models import FCN_modified
 # https://github.com/pytorch/pytorch/issues/60979
 # https://github.com/pytorch/pytorch/pull/61045
 DataLoader.__module__ = "torch.utils.data"
 Module.__module__ = "torch.nn"
 
+import sys
+sys.path.append('home/esther/lc-mapping/scripts/')
+import landcover_definitions as lc
 
-# CMAP = matplotlib.colors.ListedColormap(
-#     [np.array(Chesapeake7.cmap[i + 1]) / 255.0 for i in range(6)]
-# )
-
-
-class ChesapeakeCVPRPriorSegmentationTask(LightningModule):
-    """LightningModule for training models on the Chesapeake CVPR Land Cover dataset.
+class EnviroatlasSegmentationTask(LightningModule):
+    """LightningModule for training models on the Enviroatlas Land Cover dataset.
 
     This allows using arbitrary models and losses from the
     ``pytorch_segmentation_models`` package.
     """
 
     def config_task(self, kwargs: Dict[str, Any]) -> None:
-        """Configures the task based on kwargs parameters."""
+        self.classes_keep = kwargs['classes_keep']
+        self.colors = [lc.lc_colors['enviroatlas'][c] for c in self.classes_keep]
+        self.n_classes = len(self.classes_keep) 
+        self.n_classes_with_nodata = len(self.classes_keep) + 1
+        self.ignore_index = len(self.classes_keep)
         
-        if kwargs['condense_barren']:
-            n_classes = 4
-            # need the n_classes_with_nodata for the padding in test set
-            self.n_classes_with_nodata = n_classes + 1
-            self.ignore_index = 4 
-            
-            self.lc_type = 'chesapeake_4_no_zeros'
-            
-            
-        elif kwargs['condense_road_and_impervious']:
-            n_classes = 5
-            self.lc_type = 'chesapeake_5'
-            self.ignore_index = None
-        
+        if 'include_prior_as_datalayer' in kwargs.keys() and kwargs['include_prior_as_datalayer']:
+            self.include_prior_as_datayer = True
+            self.in_channels = 9 # 5 for prior, 4 for naip
+        else:
+            self.include_prior_as_datayer = False
+            self.in_channels = 4
 
-        print('lc type is ', self.lc_type)
-        self.n_classes = n_classes
-        
-        qr_losses = ["qr_forward","qr_reverse"]
-        self.need_to_add_smoothing = (kwargs["segmentation_model"] != 'fcn') and (kwargs['loss'] in qr_losses)
-        if self.need_to_add_smoothing:
-            print('will add smoothing after softmax')
-            self.output_smooth = kwargs['output_smooth']
-        
-        print(n_classes)
+        """Configures the task based on kwargs parameters."""
         if kwargs["segmentation_model"] == "unet":
             self.model = smp.Unet(
                 encoder_name=kwargs["encoder_name"],
                 encoder_weights=kwargs["encoder_weights"],
-                in_channels=4,
-                classes=n_classes,
-                activation='softmax'
+                activation=kwargs["activation_layer"],
+                in_channels=self.in_channels,
+                classes=self.n_classes,
             )
         elif kwargs["segmentation_model"] == "deeplabv3+":
             self.model = smp.DeepLabV3Plus(
                 encoder_name=kwargs["encoder_name"],
                 encoder_weights=kwargs["encoder_weights"],
-                in_channels=4,
-                classes=n_classes,
+                in_channels=self.in_channels,
+                classes=self.n_classes,
             )
         elif kwargs["segmentation_model"] == "fcn":
             self.model = FCN_modified(
-                in_channels=4,
-                classes=n_classes,
+                in_channels=self.in_channels,
+                classes=self.n_classes,
                 num_filters=256,
                 output_smooth=kwargs['output_smooth']
             )
@@ -104,16 +81,17 @@ class ChesapeakeCVPRPriorSegmentationTask(LightningModule):
             raise ValueError(
                 f"Model type '{kwargs['segmentation_model']}' is not valid."
             )
-            
-        if kwargs["loss"] == "qr_forward":
-           # self.loss = loss_on_prior_simple
-            self.loss = loss_on_prior_simple
-        elif kwargs["loss"] == "qr_reverse":
-            self.loss = loss_on_prior_reversed_kl_simple
-        elif kwargs["loss"] == "ce_on_prior":
-            self.loss = cross_entropy_on_prior 
+
+        if kwargs["loss"] == "ce":
+            self.loss = nn.CrossEntropyLoss(  # type: ignore[attr-defined]
+                ignore_index=7
+            )
         elif kwargs["loss"] == "nll":
             self.loss = nn.NLLLoss() 
+          #  self.test_loss = nn.NLLLoss(num_classes=self.n_classes_with_nodata, ignore_index=self.ignore_index)
+            
+        elif kwargs["loss"] == "jaccard":
+            self.loss = smp.losses.JaccardLoss(mode="multiclass")
         else:
             raise ValueError(f"Loss type '{kwargs['loss']}' is not valid.")
 
@@ -135,29 +113,19 @@ class ChesapeakeCVPRPriorSegmentationTask(LightningModule):
 
         self.config_task(kwargs)
 
-        self.train_accuracy_q = Accuracy(num_classes=self.n_classes_with_nodata,ignore_index=self.ignore_index)
-        self.val_accuracy_q = Accuracy(num_classes=self.n_classes_with_nodata,ignore_index=self.ignore_index)
-        self.test_accuracy_q = Accuracy(num_classes=self.n_classes_with_nodata,ignore_index=self.ignore_index)
+        self.train_accuracy = Accuracy(num_classes=self.n_classes_with_nodata, ignore_index=self.ignore_index)
+        self.val_accuracy = Accuracy(num_classes=self.n_classes_with_nodata, ignore_index=self.ignore_index)
+        self.test_accuracy = Accuracy(num_classes=self.n_classes_with_nodata, ignore_index=self.ignore_index)
 
-        self.train_iou_q = IoU(num_classes=self.n_classes_with_nodata, ignore_index=self.ignore_index)
-        self.val_iou_q = IoU(num_classes=self.n_classes_with_nodata, ignore_index=self.ignore_index)
-        self.test_iou_q = IoU(num_classes=self.n_classes_with_nodata, ignore_index=self.ignore_index)
+        self.train_iou = IoU(num_classes=self.n_classes_with_nodata, ignore_index=self.ignore_index)
+        self.val_iou = IoU(num_classes=self.n_classes_with_nodata, ignore_index=self.ignore_index)
+        self.test_iou = IoU(num_classes=self.n_classes_with_nodata, ignore_index=self.ignore_index)
+        self.test_iou_per_class = IoU(num_classes=self.n_classes_with_nodata,
+                                      ignore_index=self.ignore_index,reduction='none')
         
-        self.train_accuracy_r = Accuracy(num_classes=self.n_classes_with_nodata,ignore_index=self.ignore_index)
-        self.val_accuracy_r = Accuracy(num_classes=self.n_classes_with_nodata,ignore_index=self.ignore_index)
-        self.test_accuracy_r = Accuracy(num_classes=self.n_classes_with_nodata,ignore_index=self.ignore_index)
-
-        self.train_iou_r = IoU(num_classes=self.n_classes_with_nodata, ignore_index=self.ignore_index)
-        self.val_iou_r = IoU(num_classes=self.n_classes_with_nodata, ignore_index=self.ignore_index)
-        self.test_iou_r = IoU(num_classes=self.n_classes_with_nodata, ignore_index=self.ignore_index)
-
     def forward(self, x: Tensor) -> Any:  # type: ignore[override]
         """Forward pass of the model."""
-        preds = self.model(x)
-
-        if self.need_to_add_smoothing:
-            preds = nn.functional.normalize(preds + self.output_smooth,p=1,dim=1).log()
-        return preds
+        return self.model(x)
 
     def training_step(  # type: ignore[override]
         self, batch: Dict[str, Any], batch_idx: int
@@ -165,41 +133,25 @@ class ChesapeakeCVPRPriorSegmentationTask(LightningModule):
         """Training step - reports average accuracy and average IoU."""
         x = batch["image"]
         y = batch["mask"]
-        y_hr = batch["highres_labels"]
-        y_hard = y.argmax(dim=1)
         y_hat = self.forward(x)
         y_hat_hard = y_hat.argmax(dim=1)
-        
+
         loss = self.loss(y_hat, y)
-        
-        with torch.no_grad():
-            z = nn.functional.normalize(torch.exp(y_hat), p=1, dim=(0,2,3))
-            # y is the prior
-            r_hat_hard = (z * y).argmax(dim=1)
 
         # by default, the train step logs every `log_every_n_steps` steps where
         # `log_every_n_steps` is a parameter to the `Trainer` object
         self.log("train_loss", loss, on_step=True, on_epoch=False)
-#         self.train_accuracy(y_hat_hard, y_hard)
-#         self.train_iou(y_hat_hard, y_hard)
-        
-        self.train_accuracy_q(y_hat_hard, y_hr)
-        self.train_iou_q(y_hat_hard, y_hr)
-        self.train_accuracy_r(r_hat_hard, y_hr)
-        self.train_iou_r(r_hat_hard, y_hr)
+        self.train_accuracy(y_hat_hard, y)
+        self.train_iou(y_hat_hard, y)
 
         return cast(Tensor, loss)
 
     def training_epoch_end(self, outputs: Any) -> None:
         """Logs epoch level training metrics."""
-        self.log("train_acc_q", self.train_accuracy_q.compute())
-        self.log("train_acc_r", self.train_accuracy_r.compute())
-        self.log("train_iou_q", self.train_iou_q.compute())
-        self.log("train_iou_r", self.train_iou_r.compute())
-        self.train_accuracy_q.reset()
-        self.train_accuracy_r.reset()
-        self.train_iou_q.reset()
-        self.train_iou_r.reset()
+        self.log("train_acc_q", self.train_accuracy.compute())
+        self.log("train_iou_q", self.train_iou.compute())
+        self.train_accuracy.reset()
+        self.train_iou.reset()
 
     def validation_step(  # type: ignore[override]
         self, batch: Dict[str, Any], batch_idx: int
@@ -207,67 +159,57 @@ class ChesapeakeCVPRPriorSegmentationTask(LightningModule):
         """Validation step - reports average accuracy and average IoU."""
         x = batch["image"]
         y = batch["mask"]
-        y_hr = batch["highres_labels"]
-        
-        y_hard = y.argmax(dim=1)
         y_hat = self.forward(x)
         y_hat_hard = y_hat.argmax(dim=1)
 
+      #  print('yhat shape', y_hat.shape)
+      #  print('y unqiue values', y.unique())
         loss = self.loss(y_hat, y)
 
-        with torch.no_grad():
-            z = nn.functional.normalize(torch.exp(y_hat), p=1, dim=(0,2,3))
-            r_hat_hard = (z * y).argmax(dim=1)
-            
         # by default, the test and validation steps only log per *epoch*
         self.log("val_loss", loss)
-#         self.val_accuracy(y_hat_hard, y_hard)
-#         self.val_iou(y_hat_hard, y_hard)
-        self.val_accuracy_q(y_hat_hard, y_hr)
-        self.val_iou_q(y_hat_hard, y_hr)
-        
-        self.val_accuracy_r(r_hat_hard, y_hr)
-        self.val_iou_r(r_hat_hard, y_hr)
- 
+        self.val_accuracy(y_hat_hard, y)
+        self.val_iou(y_hat_hard, y)
+
         if batch_idx < 10:
             # Render the image, ground truth mask, and predicted mask for the first
             # image in the batch
             img = np.rollaxis(  # convert image to channels last format
-                batch["image"][0].cpu().numpy(), 0, 3
+                batch["image"][0][:4].cpu().numpy(), 0, 3
             )
-            # mask = batch["mask"][0].cpu().numpy()
-            # pred = y_hat_hard[0].cpu().numpy()
-            prior = batch["mask"][0]
-            prior_vis = lc.vis_lc(prior.cpu().numpy(), self.lc_type).T.swapaxes(0,1)
-            highres_labels_vis = lc.vis_lc(batch["highres_labels"][0].cpu().numpy(), self.lc_type).T.swapaxes(0,1)
-            
-            q = torch.exp(y_hat[0])
-            pred_vis = lc.vis_lc(q.cpu().numpy(), self.lc_type).T.swapaxes(0,1)
-            # calculated r (one one image, so classes are on dim 0)
-            r = nn.functional.normalize( z[0] * prior, p=1,dim=0)
-            r_vis = lc.vis_lc(r.cpu().numpy(), self.lc_type).T.swapaxes(0,1)
-    
-            fig, axs = plt.subplots(1,5, figsize=(20, 4))
-            axs[0].imshow(img[:, :, :3])
-            axs[0].set_title('NAIP')
-            axs[0].axis("off")
-           # axs[1].imshow(mask_vis, vmin=0, vmax=6, cmap=CMAP, interpolation="none")
-            axs[1].imshow(prior_vis, interpolation="none")
-            axs[1].set_title('prior')
-            axs[1].axis("off")
-           # axs[2].imshow(pred_vis, vmin=0, vmax=6, cmap=CMAP, interpolation="none")
-            axs[2].imshow(pred_vis, interpolation="none")
-            axs[2].set_title('q()')
-            axs[2].axis("off")
-            plt.tight_layout()
-            axs[3].imshow(r_vis, interpolation="none")
-            axs[3].set_title('r = z(q)*prior')
-            axs[3].axis("off")
-            axs[4].set_title('highres labels (CS)')
-            axs[4].imshow(highres_labels_vis, interpolation="none")
-            axs[4].axis("off")
-            
-            
+            if self.include_prior_as_datayer:
+                prior = batch["image"][0][4:].cpu().numpy()
+                prior_vis = lc.vis_lc_from_colors(prior, self.colors).T.swapaxes(0,1)
+                img[:,:,:3] = (prior_vis + img[:,:,:3]) / 2. 
+                
+            # This is specific to the 5 class definition
+            mask = batch["mask"][0].cpu().numpy()
+            pred = y_hat_hard[0].cpu().numpy()
+            if self.include_prior_as_datayer:
+                fig, axs = plt.subplots(1, 4, figsize=(12, 4))
+                axs[0].imshow(img[:, :, :3])
+                axs[0].axis("off")
+                axs[1].imshow(prior_vis)
+                axs[1].axis("off")
+                axs[2].imshow(lc.vis_lc_from_colors(mask, self.colors).T.swapaxes(0,1), interpolation="none")
+                axs[2].axis("off")
+                axs[2].set_title('labels')
+                axs[3].imshow(lc.vis_lc_from_colors(pred, self.colors).T.swapaxes(0,1), interpolation="none")
+                axs[3].axis("off")
+                axs[3].set_title('predictions')
+                plt.tight_layout()
+            else:
+                fig, axs = plt.subplots(1, 3, figsize=(12, 4))
+                axs[0].imshow(img[:, :, :3])
+                axs[0].axis("off")
+                axs[1].imshow(lc.vis_lc_from_colors(mask, self.colors).T.swapaxes(0,1), interpolation="none")
+                axs[1].axis("off")
+                axs[1].set_title('labels')
+                axs[2].imshow(lc.vis_lc_from_colors(pred, self.colors).T.swapaxes(0,1), interpolation="none")
+                axs[2].axis("off")
+                axs[2].set_title('predictions')
+                plt.tight_layout()
+
             # the SummaryWriter is a tensorboard object, see:
             # https://pytorch.org/docs/stable/tensorboard.html#
             summary_writer: SummaryWriter = self.logger.experiment
@@ -278,14 +220,10 @@ class ChesapeakeCVPRPriorSegmentationTask(LightningModule):
 
     def validation_epoch_end(self, outputs: Any) -> None:
         """Logs epoch level validation metrics."""
-        self.log("val_acc_q", self.val_accuracy_q.compute())
-        self.log("val_iou_q", self.val_iou_q.compute())
-        self.log("val_acc_r", self.val_accuracy_r.compute())
-        self.log("val_iou_r", self.val_iou_r.compute())
-        self.val_accuracy_q.reset()
-        self.val_accuracy_r.reset()
-        self.val_iou_q.reset()
-        self.val_iou_r.reset()
+        self.log("val_acc_q", self.val_accuracy.compute())
+        self.log("val_iou_q", self.val_iou.compute())
+        self.val_accuracy.reset()
+        self.val_iou.reset()
 
     def test_step(  # type: ignore[override]
         self, batch: Dict[str, Any], batch_idx: int
@@ -293,36 +231,33 @@ class ChesapeakeCVPRPriorSegmentationTask(LightningModule):
         """Test step identical to the validation step."""
         x = batch["image"]
         y = batch["mask"]
-        y_hr = batch["highres_labels"]
-        y_hard = y.argmax(dim=1)
         y_hat = self.forward(x)
         y_hat_hard = y_hat.argmax(dim=1)
+        
+    #    print(torch.unique(y))
+    #    print(torch.unique(y_hat_hard))
 
-        loss = self.loss(y_hat, y)
-
-        with torch.no_grad():
-            z = nn.functional.normalize(torch.exp(y_hat), p=1, dim=(0,2,3))
-            r_hat_hard = (z * y).argmax(dim=1)
-            
+        # hacky way to deal with nodata
+        loss = 0
+        #loss = self.loss(y_hat, y)
+        
         # by default, the test and validation steps only log per *epoch*
         self.log("test_loss", loss)
-    #    self.test_accuracy(y_hat_hard, y_hard)
-     #   self.test_iou(y_hat_hard, y_hard)
-        self.test_accuracy_q(y_hat_hard, y_hr)
-        self.test_iou_q(y_hat_hard, y_hr)
-        self.test_accuracy_r(r_hat_hard, y_hr)
-        self.test_iou_r(r_hat_hard, y_hr)
-
+        self.test_accuracy(y_hat_hard, y)
+        self.test_iou(y_hat_hard, y)
+        self.test_iou_per_class(y_hat_hard, y)
+        
     def test_epoch_end(self, outputs: Any) -> None:
         """Logs epoch level test metrics."""
-        self.log("test_acc_q", self.test_accuracy_q.compute())
-        self.log("test_acc_r", self.test_accuracy_r.compute())
-        self.log("test_iou_q", self.test_iou_q.compute())
-        self.log("test_iou_r", self.test_iou_r.compute())
-        self.test_accuracy_q.reset()
-        self.test_accuracy_r.reset()
-        self.test_iou_q.reset()
-        self.test_iou_r.reset()
+        self.log("test_acc_q", self.test_accuracy.compute())
+        self.log("test_iou_q", self.test_iou.compute())
+        #print(self.test_iou_per_class.compute())
+        self.log_dict(dict(zip([f'iou_{x}' for x in np.arange(self.n_classes)],
+                               self.test_iou_per_class.compute()))
+                     )
+        self.test_accuracy.reset()
+        self.test_iou.reset()
+        self.test_iou_per_class.reset()
 
     def configure_optimizers(self) -> Dict[str, Any]:
         """Initialize the optimizer and learning rate scheduler."""
@@ -343,7 +278,7 @@ class ChesapeakeCVPRPriorSegmentationTask(LightningModule):
         }
 
 
-class ChesapeakeCVPRPriorDataModule(LightningDataModule):
+class EnviroatlasDataModule(LightningDataModule):
     """LightningDataModule implementation for the Chesapeake CVPR Land Cover dataset.
 
     Uses the random splits defined per state to partition tiles into train, val,
@@ -354,17 +289,17 @@ class ChesapeakeCVPRPriorDataModule(LightningDataModule):
         self,
         root_dir: str,
         states_str: str,
-        prior_version: str,
+    #    train_state: str,
+        classes_keep: list,
         patches_per_tile: int = 200,
         patch_size: int = 128,
         batch_size: int = 64,
         num_workers: int = 4,
-        prior_smoothing_constant: float = 1e-2,
-        condense_barren: bool = True,
-        condense_road_and_impervious: bool = True,
+        train_set_scaling_subset: float = 1.0,
         train_set: str = "train",
         val_set: str = "val",
         test_set: str = "test",
+        include_prior_as_datalayer = False,
         **kwargs: Any,
     ) -> None:
         """Initialize a LightningDataModule for Chesapeake CVPR based DataLoaders.
@@ -372,7 +307,7 @@ class ChesapeakeCVPRPriorDataModule(LightningDataModule):
         Args:
             root_dir: The ``root`` arugment to pass to the ChesapeakeCVPR Dataset
                 classes
-            states: The states code to use to train the model, e.g. "ny"
+            train_state: The state code to use to train the model, e.g. "ny"
             patches_per_tile: The number of patches per tile to sample
             batch_size: The batch size to use in all created DataLoaders
             num_workers: The number of workers to use in all created DataLoaders
@@ -380,35 +315,40 @@ class ChesapeakeCVPRPriorDataModule(LightningDataModule):
         super().__init__()  # type: ignore[no-untyped-call]
         
         states = states_str.split('+')
-        pix_to_m_scale = 2.0
-#         for state in states:
-#             assert state in ["md", "de", "ny", "pa", "va", "wv"]
-#             if state in ["ny","pa"]:
-# #                 # these sometimes don't fit with just 2
-#                  pix_to_m_scale = 8.
-            
-
+        for state in states:
+            assert state in ["pittsburgh_pa-2010_1m",
+                             'durham_nc-2012_1m', 
+                             'austin_tx-2012_1m', 
+                             'phoenix_az-2010_1m']
+        
+        print(patches_per_tile)
         self.root_dir = root_dir
-        self.states = states
-        self.prior_version = prior_version
-        self.layers = ["naip-new", f"prior_{prior_version}", "lc"]
-        self.patches_per_tile = np.int(patches_per_tile /len(states))
-        print(self.patches_per_tile, ' patches_per_tile')
+    #    self.train_state = train_state
+        self.include_prior_as_datalayer = include_prior_as_datalayer
+        if self.include_prior_as_datalayer:
+            self.layers = ["a_naip",  "prior_whole_city_cooccurrences_101_15", "h_highres_labels"]
+        else:
+            self.layers = ["a_naip",  "h_highres_labels"]
+        self.patches_per_tile = patches_per_tile
         self.patch_size = patch_size
-        self.original_patch_size = 512
-      #  self.original_patch_size = int(patch_size * pix_to_m_scale)
+        self.original_patch_size = 300
         self.batch_size = batch_size
-        print(self.batch_size, ' batch size')
         self.num_workers = num_workers
-        self.prior_smoothing_constant = prior_smoothing_constant
-        self.condense_road_and_impervious = condense_road_and_impervious
-        self.condense_barren = condense_barren
+        
+        self.train_set_scaling_subset =train_set_scaling_subset
+        print('scaling subset: ',self.train_set_scaling_subset)
+        
+        self.classes_keep = classes_keep
+        self.ignore_index = len(classes_keep)
+        print(self.classes_keep) 
+        
         self.train_sets = [f"{state}-{train_set}" for state in states]
         self.val_sets = [f"{state}-{val_set}" for state in states]
         self.test_sets = [f"{state}-{test_set}" for state in states]
         print(f'train sets are: {self.train_sets}')
         print(f'val sets are: {self.val_sets}')
         print(f'test sets are: {self.test_sets}')
+        
         
     def pad_to(
         self, size: int = 512, image_value: int = 0, mask_value: int = 0
@@ -461,57 +401,36 @@ class ChesapeakeCVPRPriorDataModule(LightningDataModule):
     
     def preprocess(self, sample: Dict[str, Any]) -> Dict[str, Any]:
         """Preprocesses a single sample."""
-
-        # separate out the highres labels 
-        sample['highres_labels'] = sample['mask'][-1].int() # labels
-        sample["mask"] = sample["mask"][:-1] # prior
         
-        impervious_idxs_highres_orig = [4,5,6]
-        impervious_idx_condesed = [4]
-        if self.condense_barren:
-            # prior mask should be good to go -- we'll normalize it below
+        # this will error if there's classes that aren't in classes_keep
+        reindex_map = dict(zip(self.classes_keep, np.arange(len(self.classes_keep))))
+      #  print('reindex map ' , reindex_map)
+        reindexed_mask = -1 * torch.ones(sample["mask"].shape)
+        for old_idx, new_idx in reindex_map.items():
+            reindexed_mask[sample["mask"] == old_idx] = new_idx
             
-            # Now remap all the highres labels
-            impervious_idxs_highres_orig = [4,5,6]
-            impervious_idx_condesed = 4
-            for c_idx in impervious_idxs_highres_orig:
-                sample["highres_labels"][sample["highres_labels"] == c_idx] = impervious_idx_condesed
-            
-            nodata_idx_pad_orig = 7
-            nodata_idx_pad_condensed = 5 # note that we're about to subtract one
-            
-            sample["highres_labels"][sample["highres_labels"] == nodata_idx_pad_orig] = nodata_idx_pad_condensed
-            # subtract 1 so it starts with 0
-            sample["highres_labels"] = sample["highres_labels"] - 1
-            
-        elif self.condense_road_and_impervious:
-            impervious_idx = 5
-            road_idx = 6
-            # recast road idx to impervious
-            sample['highres_labels'][sample['highres_labels'] == road_idx] = impervious_idx
-            # subtract 1
-            sample['highres_labels'] = sample['highres_labels'] - 1
-            
-            # add roads to impervious then remove road index
-            sample["mask"][impervious_idx] += sample["mask"][road_idx]
-            # remove road index and nodata
-            sample["mask"] = sample["mask"][1:-1]
-            
-        
-        # make sure prior is normalized, then smooth
-        sample["mask"] = nn.functional.normalize(sample["mask"].float(),p=1,dim=0)
-        sample["mask"] = nn.functional.normalize(sample["mask"] + self.prior_smoothing_constant,p=1,dim=0)
-        sample["image"] = sample["image"].float() / 255.0
+        reindexed_mask[reindexed_mask == -1] = self.ignore_index
+        assert (reindexed_mask >= 0).all()
 
-        sample["mask"] = sample["mask"]#.squeeze()
-        sample["highres_labels"] = sample["highres_labels"]#.squeeze()
+        sample["mask"] = reindexed_mask
+        
+        # if prior is included as a datalayer, note that is also should be divided by 255, 
+        # so this will work still                   
+        sample["image"] = sample["image"] / 255.0
+        # don't subtract 1 because we already reindexed
+        sample["mask"] = sample["mask"].squeeze()
+
+        sample["image"] = sample["image"].float()
+        sample["mask"] = sample["mask"].long()
+        
         return sample
+      
 
     def prepare_data(self) -> None:
         """Confirms that the dataset is downloaded on the local node.
         This method is called once per node, while :func:`setup` is called once per GPU.
         """
-        ChesapeakeCVPRPrior(
+        Enviroatlas(
             self.root_dir,
             splits=self.train_sets,
             layers=self.layers,
@@ -519,7 +438,7 @@ class ChesapeakeCVPRPriorDataModule(LightningDataModule):
             download=False,
             checksum=False,
         )
-
+        
     def setup(self, stage: Optional[str] = None) -> None:
         """Create the train/val/test splits based on the original Dataset objects.
 
@@ -546,7 +465,7 @@ class ChesapeakeCVPRPriorDataModule(LightningDataModule):
         )
         
         
-        self.train_dataset = ChesapeakeCVPRPrior(
+        self.train_dataset = Enviroatlas(
             self.root_dir,
             splits=self.train_sets,
             layers=self.layers,
@@ -554,7 +473,7 @@ class ChesapeakeCVPRPriorDataModule(LightningDataModule):
             download=False,
             checksum=False,
         )
-        self.val_dataset = ChesapeakeCVPRPrior(
+        self.val_dataset = Enviroatlas(
             self.root_dir,
             splits=self.val_sets,
             layers=self.layers,
@@ -562,7 +481,7 @@ class ChesapeakeCVPRPriorDataModule(LightningDataModule):
             download=False,
             checksum=False,
         )
-        self.test_dataset = ChesapeakeCVPRPrior(
+        self.test_dataset = Enviroatlas(
             self.root_dir,
             splits=self.test_sets,
             layers=self.layers,
@@ -570,6 +489,7 @@ class ChesapeakeCVPRPriorDataModule(LightningDataModule):
             download=False,
             checksum=False,
         )
+
 
     def train_dataloader(self) -> DataLoader[Any]:
         """Return a DataLoader for training."""
@@ -595,27 +515,14 @@ class ChesapeakeCVPRPriorDataModule(LightningDataModule):
                 self.val_dataset.index,
                 size=self.original_patch_size,
                 batch_size=self.batch_size,
-                length=self.patches_per_tile * self.val_dataset.index.get_size() // 2,
+                length=self.patches_per_tile * self.val_dataset.index.get_size() // 4,
             )
         return DataLoader(
                 self.val_dataset,
                 batch_sampler=sampler,  # type: ignore[arg-type]
                 num_workers=self.num_workers,
             )
-#     def val_dataloader(self) -> DataLoader[Any]:
-#         """Return a DataLoader for validation."""
-#             sampler = GridGeoSampler(
-#             self.val_dataset.index,
-#             size=self.original_patch_size,
-#             stride=self.original_patch_size,
-#         )
-#         return DataLoader(
-#             self.val_dataset,
-#             batch_size=self.batch_size,
-#             sampler=sampler,  # type: ignore[arg-type]
-#             num_workers=self.num_workers,
-# #            pin_memory=False,
-#         )
+
     def test_dataloader(self) -> DataLoader[Any]:
         """Return a DataLoader for testing."""
         sampler = GridGeoSampler(
@@ -630,3 +537,4 @@ class ChesapeakeCVPRPriorDataModule(LightningDataModule):
             num_workers=self.num_workers,
   #          pin_memory=False,
         )
+

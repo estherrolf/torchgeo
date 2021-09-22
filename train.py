@@ -14,8 +14,8 @@ from pytorch_lightning import loggers as pl_loggers
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 
 from torchgeo.trainers import (
-#    EnviroatlasDataModule,
- #   EnviroatlasSegmentationTask,
+   EnviroatlasDataModule,
+   EnviroatlasSegmentationTask,
 #    EnviroatlasPriorDataModule,
 #    EnviroatlasPriorSegmentationTask,
 #    ChesapeakeCVPRLearnPriorTask,
@@ -37,7 +37,7 @@ from torchgeo.trainers import (
 TASK_TO_MODULES_MAPPING: Dict[
     str, Tuple[Type[pl.LightningModule], Type[pl.LightningDataModule]]
 ] = {
-#     "enviroatlas": (EnviroatlasSegmentationTask, EnviroatlasDataModule),
+    "enviroatlas": (EnviroatlasSegmentationTask, EnviroatlasDataModule),
 #     "enviroatlas_learn_on_prior": (EnviroatlasPriorSegmentationTask, 
 #                                   EnviroatlasPriorDataModule),
 #     "chesapeake_learn_the_prior": (ChesapeakeCVPRLearnPriorTask, 
