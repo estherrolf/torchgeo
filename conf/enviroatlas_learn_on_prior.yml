@@ -5,12 +5,12 @@ trainer:
   benchmark: True
 
 program:
-   data_dir: '/home/esther/torchgeo_data/cvpr_chesapeake_landcover'
+   data_dir: '/home/esther/torchgeo_data/enviroatlas'
    overwrite: True
-
+    
 experiment:
-  task: "chesapeake_learn_on_prior"
-  name: "chesapeake_train_on_prior_ce"
+  task: "enviroatlas_learn_on_prior"
+  name: "enviroatlas_train_on_prior"
   module:
     loss: "qr_forward"  # cross entropy loss
     segmentation_model: "fcn"
@@ -19,12 +19,8 @@ experiment:
     learning_rate: 1e-3
     output_smooth: 1e-4
     learning_rate_schedule_patience: 4
-    num_filters: 256
   datamodule:
     batch_size: 64
     patch_size: 128
-    patches_per_tile: 400
-    num_workers: 4
-    train_state: "de"
-    condense_barren: True
-    train_set: "val"
+    patches_per_tile: 800
+    num_workers: 8

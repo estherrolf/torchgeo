@@ -1,0 +1,17 @@
+experiment:
+  task: "chesapeake_learn_the_prior"
+  module:
+    loss: "nll"
+    segmentation_model: "fcn_larger"
+    learning_rate: 1e-3
+    learning_rate_schedule_patience: 4
+    output_smooth: 1e-8
+    condense_barren: True
+  datamodule:
+    batch_size: 64
+    patch_size: 128
+    patches_per_tile: 50
+    num_workers: 4
+    train_state: "de"
+    onehot_encode_labels: False
+    condense_barren: True

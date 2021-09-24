@@ -97,7 +97,7 @@ class ChesapeakeCVPRPriorSegmentationTask(LightningModule):
             self.model = FCN_modified(
                 in_channels=4,
                 classes=n_classes,
-                num_filters=256,
+                num_filters=kwargs['num_filters'],
                 output_smooth=kwargs['output_smooth']
             )
         else:

@@ -824,7 +824,7 @@ class ChesapeakeCVPRWeakInput(GeoDataset):
     def __init__(
         self,
         root: str = "data",
-        split: str = "de-train",
+        splits: Sequence[str] = ["de-train"],
         layers: List[str] = ["prior_from_cooccurrences_101_15_no_osm_no_buildings", "lc"],
         transforms: Optional[Callable[[Dict[str, Any]], Dict[str, Any]]] = None,
         cache: bool = True,
@@ -850,7 +850,8 @@ class ChesapeakeCVPRWeakInput(GeoDataset):
             FileNotFoundError: if no files are found in ``root``
             RuntimeError: if ``download=False`` but dataset is missing or checksum fails
         """
-        assert split in self.splits
+        for split in splits:
+            assert split in self.splits
         assert all([layer in self.valid_layers for layer in layers])
         # only and exactly the first input should be blurrd nlcd
         assert layers[0].endswith('no_osm_no_buildings')
