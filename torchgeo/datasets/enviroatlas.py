@@ -579,7 +579,7 @@ class EnviroatlasWeakInput(GeoDataset):
         [f"{state}-train" for state in states[:1]]
         + [f"{state}-val" for state in states[:1]]
         + [f"{state}-test" for state in states]
-        + [f"{state}-val" for state in states[-1:]] 
+        + [f"{state}-val5" for state in states] 
     )
 
     p_src_crs = pyproj.CRS("epsg:3857")

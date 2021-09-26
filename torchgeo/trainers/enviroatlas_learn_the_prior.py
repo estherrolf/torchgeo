@@ -63,6 +63,7 @@ class EnviroatlasLearnPriorTask(LightningModule):
         self.in_channels = 9 
         self.need_to_exp_outputs = False
         self.labels_are_onehot = False
+        self.need_to_pad_output_with_zeros = False
         
         """Configures the task based on kwargs parameters."""
         if kwargs["segmentation_model"] == "fcn":
@@ -87,7 +88,8 @@ class EnviroatlasLearnPriorTask(LightningModule):
             )
 
         if kwargs["loss"] == "nll":
-            self.loss = nn.NLLLoss() 
+            self.loss = nn.NLLLoss(ignore_index=self.ignore_index) 
+            self.need_to_pad_output_with_zeros = True
             
         elif kwargs["loss"] == "ce":
             self.loss = nn.CrossEntropyLoss()
@@ -134,7 +136,16 @@ class EnviroatlasLearnPriorTask(LightningModule):
 
     def forward(self, x: Tensor) -> Any:  # type: ignore[override]
         """Forward pass of the model."""
-        return self.model(x)
+        
+        if self.need_to_pad_output_with_zeros:
+            model_out = self.model(x)
+            out_shape = list(model_out.shape)
+            out_shape[1] = 1
+            # add zeros in case there are nodata in the labels
+            zeros_to_match = torch.zeros(out_shape).to(model_out.get_device())
+            return torch.cat((model_out, zeros_to_match), dim=1)
+        else:
+            return self.model(x)
 
     def training_step(  # type: ignore[override]
         self, batch: Dict[str, Any], batch_idx: int
@@ -143,7 +154,7 @@ class EnviroatlasLearnPriorTask(LightningModule):
         x = batch["image"]
         y = batch["mask"]
         y_hat = self.forward(x)
-        y_hat_hard = y_hat.argmax(dim=1)
+        y_hat_hard = y_hat[:,:self.n_classes].argmax(dim=1)
 
         loss = self.loss(y_hat, y)
 
@@ -173,7 +184,7 @@ class EnviroatlasLearnPriorTask(LightningModule):
         y = batch["mask"]
         
         y_hat = self.forward(x)
-        y_hat_hard = y_hat.argmax(dim=1)
+        y_hat_hard = y_hat[:,:self.n_classes].argmax(dim=1)
 
     #    print(y_hat.shape)
         
@@ -194,7 +205,7 @@ class EnviroatlasLearnPriorTask(LightningModule):
             # image in the batch
             inputs = batch["image"][0].cpu().numpy()
             mask = batch["mask"][0].cpu().numpy()
-            q = torch.exp(y_hat[0]).cpu().numpy()
+            q = torch.exp(y_hat[0][:self.n_classes]).cpu().numpy()
             
             # squish the input layers of the image according to this assumption:
             #[f"nlcd_onehot_blurred_kernelsize_{nlcd_blur_kernelsize}_sigma_{nlcd_blur_sigma}", 
@@ -245,7 +256,7 @@ class EnviroatlasLearnPriorTask(LightningModule):
         x = batch["image"]
         y = batch["mask"]
         y_hat = self.forward(x)
-        y_hat_hard = y_hat.argmax(dim=1)
+        y_hat_hard = y_hat[:,:self.n_classes].argmax(dim=1)
         loss = 0
         #loss = self.loss(y_hat, y)
 
