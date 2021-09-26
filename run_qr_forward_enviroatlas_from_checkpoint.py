@@ -9,13 +9,17 @@ import subprocess
 from multiprocessing import Process, Queue
 
 # list of GPU IDs that we want to use, one job will be started for every ID in the list
-GPUS = [0,1]#,2,3] 
+GPUS = [0,1] 
 TEST_MODE = False  # if False then print out the commands to be run, if True then run
 
 # Hyperparameter options
-training_set_options = ['pittsburgh_pa-2010_1m']
+training_set_options = ['phoenix_az-2010_1m',
+                        'austin_tx-2012_1m',
+                        'durham_nc-2012_1m', 
+                        'pittsburgh_pa-2010_1m'
+                       ]
 model_options = ['fcn']
-lr_options = [1e-3,1e-4,1e-5]
+lr_options = [1e-5]
 
 loss_options = ['qr_forward', 'qr_reverse']
 
@@ -26,7 +30,7 @@ prior_version_options = [
 additive_smooth_options = [1e-4]
 prior_smooth_options = [1e-4]
 
-train_set, val_set, test_set = ['val', 'val', 'val']
+train_set, val_set, test_set = ['test', 'test', 'test']
 
 def do_work(work, gpu_idx):
     while not work.empty():
@@ -56,7 +60,7 @@ def main():
         
         
         model_checkpoint = "/home/esther/torchgeo/output/hp_gridsearch_pittsburgh/pittsburgh_pa-2010_1m_fcn_0.001_nll/last.ckpt"
-        output_dir = "output/hp_search/ea_from_pittsburgh_model"
+        output_dir = "output/ea_from_pittsburgh_model"
 
         command = (
             "python train.py program.overwrite=True config_file=conf/enviroatlas_learn_on_prior.yml"
@@ -75,7 +79,7 @@ def main():
             + f" experiment.datamodule.val_set={val_set}"
             + f" experiment.datamodule.test_set={test_set}"
             + f" program.output_dir={output_dir}"
-            + f" program.log_dir=logs/hp_search/ea_from_pittsburgh"
+            + f" program.log_dir=logs/ea_from_pittsburgh"
             + " program.data_dir=/home/esther/torchgeo_data/enviroatlas"
             + " trainer.gpus=[GPU]"
         )
