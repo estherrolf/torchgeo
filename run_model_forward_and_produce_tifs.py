@@ -8,15 +8,18 @@ import torch.nn.functional as F
 from torchgeo.models import FCN_modified
 #from TileDatasets import TileInferenceDataset
 from torchgeo.datasets import TileInferenceDataset
-NUM_CLASSES = 4
-NUM_FILTERS = 256
+NUM_CLASSES = 5
+NUM_FILTERS = 128
 
 NUM_WORKERS = 4
 CHIP_SIZE = 128
-PADDING = 64
+PADDING = 0
 assert PADDING % 2 == 0
 HALF_PADDING = PADDING // 2
-CHIP_STRIDE = CHIP_SIZE - PADDING
+
+EDGE_PADDING = 5 # receptive_field of the basic fcn model is 11
+CHIP_STRIDE = CHIP_SIZE - 2 * EDGE_PADDING
+
 
 
 # Modified from script from Caleb to run model forward and produce tifs
@@ -68,6 +71,7 @@ def trim_state_dict(state_dict):
 
 def image_transforms(img):
     """Gets a unormalized numpy image in HxWxC format, returns ready-to-go Tensor."""
+    # works also if you include the prior because the prior needs to be divided by 255 as well
     img = img / 255.0
     img = np.rollaxis(img, 2, 0).astype(np.float32)
     img = torch.from_numpy(img)
@@ -78,8 +82,11 @@ def run_through_tiles(model_ckpt_fn,
                      input_fns,
                      output_fns,
                      model='fcn-modified',
+                     include_prior_as_datalayer=False,
+                     prior_fns = [],
                      batch_size=128,
                      gpu = 0,
+                     model_kwargs = {},
                      overwrite=False):
 
     ## Sanity checking
@@ -93,8 +100,13 @@ def run_through_tiles(model_ckpt_fn,
     device = torch.device(f"cuda:{gpu}")
 
     ## Load model
+    if include_prior_as_datalayer:
+        n_inputs = 9
+    else:
+        n_inputs = 4
+        
     if model == "fcn-modified":
-        model = FCN_modified(4, classes=NUM_CLASSES, num_filters=NUM_FILTERS)
+        model = FCN_modified(n_inputs, classes=NUM_CLASSES, num_filters=NUM_FILTERS,**model_kwargs)
     else:
         raise ValueError(f"Model {model} not recognized")
 
@@ -109,14 +121,25 @@ def run_through_tiles(model_ckpt_fn,
     for i,(input_fn, output_fn) in enumerate(zip(input_fns, output_fns)):
         print(f'{i} of {len(input_fns)}')
         ## Setup dataloader
-        dataset = TileInferenceDataset(
-            input_fn,
-            chip_size=CHIP_SIZE,
-            stride=CHIP_STRIDE,
-            transform=image_transforms,
-            verbose=False,
-        )
+  #      print(CHIP_STRIDE)
+        if include_prior_as_datalayer:
+            dataset = TileInferenceDataset(
+                input_fn,
+                chip_size=CHIP_SIZE,
+                stride=CHIP_STRIDE,
+                transform=image_transforms,
+                verbose=False,
+                fn_additional=prior_fns[i],
+            )
+        else:
+            dataset = TileInferenceDataset(
+                input_fn,
+                chip_size=CHIP_SIZE,
+                stride=CHIP_STRIDE,
+                transform=image_transforms,
+                verbose=False,
 
+            )
         dataloader = torch.utils.data.DataLoader(
             dataset,
             batch_size=batch_size,
@@ -142,17 +165,41 @@ def run_through_tiles(model_ckpt_fn,
 
             for j in range(t_output.shape[0]):
                 y, x = coords[j]
+                
+                # defaults (use whole chip size if you're on an corner)
+                y1, y2 = y, y + CHIP_SIZE
+                x1, x2 = x, x + CHIP_SIZE
+                
+                yt1, yt2 = 0, t_output[j].shape[1]
+                xt1, xt2 = 0, t_output[j].shape[2]
+                
+                # if we're in the middle, use the padding
+                # if this isn't the first chip in either dimension
+                if y1 - EDGE_PADDING >= 0:
+                    y1 = y1 + EDGE_PADDING
+                    yt1 = yt1 + EDGE_PADDING
+                if x1 - EDGE_PADDING >= 0:    
+                    x1 = x1 + EDGE_PADDING
+                    xt1 = xt1 + EDGE_PADDING
+                # if this isn't the last chip in either dimension
+                if y2  < output.shape[1]:
+                    y2 = y2 - EDGE_PADDING
+                    yt2 =  yt2 - EDGE_PADDING
+                if x2  < output.shape[2]:
+                    x2 = x2 - EDGE_PADDING
+                    xt2 =  xt2 - EDGE_PADDING
 
-                output[:, y : y + CHIP_SIZE, x : x + CHIP_SIZE] += t_output[j]
-                counts[y : y + CHIP_SIZE, x : x + CHIP_SIZE] += 1
-
+                output[:, y1 : y2, x1 : x2] += t_output[j][:, yt1 : yt2, xt1 : xt2]
+                counts[ y1 : y2, x1 : x2] += 1
+                
+  #      print(counts.min(), counts.max())
         output = output / counts
         output_hard = output.argmax(axis=0).astype(np.uint8)
         ## Save output
         output_profile = input_profile.copy()
         output_profile["driver"] = "GTiff"
         output_profile["dtype"] = "uint8"
-        output_profile["count"] = 4
+        output_profile["count"] = NUM_CLASSES
         output_profile["nodata"] = None
 
 #         print(output[:,:2,:2])
@@ -168,6 +215,7 @@ def run_through_tiles(model_ckpt_fn,
         print(f'writing to: {output_fn_hard}')
         with rasterio.open(output_fn_hard, "w", **output_profile) as f:
             f.write(output_hard, 1)
+       #    f.write(counts,1)
             f.write_colormap(
                 1,
                 {
