@@ -26,7 +26,8 @@ from .cv4a_kenya_crop_type import CV4AKenyaCropType
 from .cyclone import TropicalCycloneWindEstimation
 from .enviroatlas import (
     Enviroatlas,
-    EnviroatlasPrior
+    EnviroatlasPrior,
+    EnviroatlasWeakInput
 )
 from .etci2021 import ETCI2021
 from .geo import GeoDataset, RasterDataset, VectorDataset, VisionDataset, ZipDataset
@@ -77,6 +78,7 @@ __all__ = (
     "ChesapeakeCVPRWeakInput",
     "Enviroatlas",
     "EnviroatlasPrior",
+    "EnviroatlasWeakInput",
     "Landsat",
     "Landsat1",
     "Landsat2",

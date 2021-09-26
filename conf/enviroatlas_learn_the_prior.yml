@@ -9,11 +9,11 @@ program:
    overwrite: True
     
 experiment:
-  task: "enviroatlas"
-  name: "enviroatlas_train_on_highres"
+  task: "enviroatlas_learn_the_prior"
+  name: "enviroatlas_learn_the_prior"
   module:
     loss: "qr_forward"  # cross entropy loss
-    segmentation_model: "fcn"
+    segmentation_model: "fcn_modified"
     activation_layer: "logsoftmax" 
     optimizer: "adamw"
     learning_rate: 1e-3
