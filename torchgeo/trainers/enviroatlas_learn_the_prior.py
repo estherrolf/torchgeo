@@ -70,7 +70,7 @@ class EnviroatlasLearnPriorTask(LightningModule):
             self.model = FCN_modified(
                 in_channels=self.in_channels,
                 classes=self.n_classes,
-                num_filters=256,
+                num_filters=kwargs['num_filters'],
                 output_smooth=kwargs['output_smooth'],
                 log_outputs=True
             )
@@ -78,7 +78,7 @@ class EnviroatlasLearnPriorTask(LightningModule):
             self.model = FCN_larger_modified(
                 in_channels=self.in_channels,
                 classes=self.n_classes,
-                num_filters=256,
+                num_filters=kwargs['num_filters'],
                 output_smooth=kwargs['output_smooth'],
                 log_outputs=True
             )

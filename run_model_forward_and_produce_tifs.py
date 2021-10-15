@@ -5,7 +5,7 @@ import numpy as np
 import rasterio
 import torch
 import torch.nn.functional as F
-from torchgeo.models import FCN_modified
+from torchgeo.models import FCN_modified,FCN_larger_modified
 #from TileDatasets import TileInferenceDataset
 from torchgeo.datasets import TileInferenceDataset
 NUM_CLASSES = 5
@@ -78,16 +78,30 @@ def image_transforms(img):
     return img
 
 
+def image_transforms_learned_prior(img):
+    """Gets a unormalized numpy image in HxWxC format, returns ready-to-go Tensor."""
+    # works also if you include the prior because the prior needs to be divided by 255 as well
+    
+   # print(img.shape)
+    img = np.rollaxis(img, 2, 0).astype(np.float32)
+    img = torch.from_numpy(img)
+    img[:5] = img[:5] / 255.0
+    return img
+
+
 def run_through_tiles(model_ckpt_fn,
                      input_fns,
                      output_fns,
                      model='fcn-modified',
                      include_prior_as_datalayer=False,
+                      evaluating_learned_prior=False,
                      prior_fns = [],
                      batch_size=128,
                      gpu = 0,
-                     model_kwargs = {},
-                     overwrite=False):
+                     model_kwargs = {'in_channels': 4, 'classes': NUM_CLASSES, 'num_filters': NUM_FILTERS},
+               #       num_classes = 4,
+                     overwrite=False,
+                     return_dont_save=False):
 
     ## Sanity checking
     for input_fn in input_fns:
@@ -101,12 +115,14 @@ def run_through_tiles(model_ckpt_fn,
 
     ## Load model
     if include_prior_as_datalayer:
-        n_inputs = 9
-    else:
-        n_inputs = 4
+        model_kwargs['in_channels'] = 9
+        
+    num_classes = model_kwargs['classes']
         
     if model == "fcn-modified":
-        model = FCN_modified(n_inputs, classes=NUM_CLASSES, num_filters=NUM_FILTERS,**model_kwargs)
+        model = FCN_modified(**model_kwargs)
+    elif model == "fcn-larger":
+        model = FCN_larger_modified(**model_kwargs)
     else:
         raise ValueError(f"Model {model} not recognized")
 
@@ -116,7 +132,15 @@ def run_through_tiles(model_ckpt_fn,
     for param in model.parameters():
         param.requires_grad = False
     model = model.to(device)
-
+    
+    if evaluating_learned_prior:
+        img_transforms_this = image_transforms_learned_prior
+    else:
+        img_transforms_this = image_transforms
+        
+    if return_dont_save: assert len(input_fns) == 1
+        
+   
     # Run the below code for each input file -- currently only one
     for i,(input_fn, output_fn) in enumerate(zip(input_fns, output_fns)):
         print(f'{i} of {len(input_fns)}')
@@ -127,16 +151,16 @@ def run_through_tiles(model_ckpt_fn,
                 input_fn,
                 chip_size=CHIP_SIZE,
                 stride=CHIP_STRIDE,
-                transform=image_transforms,
+                transform=img_transforms_this,
                 verbose=False,
-                fn_additional=prior_fns[i],
+                fns_additional=prior_fns[i],
             )
         else:
             dataset = TileInferenceDataset(
                 input_fn,
                 chip_size=CHIP_SIZE,
                 stride=CHIP_STRIDE,
-                transform=image_transforms,
+                transform=img_transforms_this,
                 verbose=False,
 
             )
@@ -153,7 +177,7 @@ def run_through_tiles(model_ckpt_fn,
             input_profile = f.profile.copy()
 
         ## Model inference happens here
-        output = np.zeros((NUM_CLASSES, input_height, input_width), dtype=np.float32)
+        output = np.zeros((num_classes, input_height, input_width), dtype=np.float32)
         counts = np.zeros((input_height, input_width), dtype=np.float32)
 
         for i, (data, coords) in enumerate(dataloader):
@@ -194,12 +218,15 @@ def run_through_tiles(model_ckpt_fn,
                 
   #      print(counts.min(), counts.max())
         output = output / counts
+    
+        if return_dont_save: return output
+        
         output_hard = output.argmax(axis=0).astype(np.uint8)
         ## Save output
         output_profile = input_profile.copy()
         output_profile["driver"] = "GTiff"
         output_profile["dtype"] = "uint8"
-        output_profile["count"] = NUM_CLASSES
+        output_profile["count"] = num_classes
         output_profile["nodata"] = None
 
 #         print(output[:,:2,:2])

@@ -235,6 +235,7 @@ class ChesapeakeCVPRPriorSegmentationTask(LightningModule):
             img = np.rollaxis(  # convert image to channels last format
                 batch["image"][0].cpu().numpy(), 0, 3
             )
+            query = batch['bbox'][0]
             # mask = batch["mask"][0].cpu().numpy()
             # pred = y_hat_hard[0].cpu().numpy()
             prior = batch["mask"][0]
@@ -249,7 +250,7 @@ class ChesapeakeCVPRPriorSegmentationTask(LightningModule):
     
             fig, axs = plt.subplots(1,5, figsize=(20, 4))
             axs[0].imshow(img[:, :, :3])
-            axs[0].set_title('NAIP')
+            axs[0].set_title(f'NAIP: {query}')
             axs[0].axis("off")
            # axs[1].imshow(mask_vis, vmin=0, vmax=6, cmap=CMAP, interpolation="none")
             axs[1].imshow(prior_vis, interpolation="none")
@@ -454,6 +455,10 @@ class ChesapeakeCVPRPriorDataModule(LightningDataModule):
             x1 = (width - size) // 2
             sample["image"] = sample["image"][:, y1 : y1 + size, x1 : x1 + size]
             sample["mask"] = sample["mask"][:, y1 : y1 + size, x1 : x1 + size]
+            
+            if (sample["mask"][:,:4,:4].sum(dim=0) < 240).any(): 
+                print(f'prior not summing to 1 in center crop: {sample["mask"].sum(dim=0).min()}')
+                print(sample["mask"][:,:4,:4])
 
             return sample
 
@@ -466,6 +471,11 @@ class ChesapeakeCVPRPriorDataModule(LightningDataModule):
         sample['highres_labels'] = sample['mask'][-1].int() # labels
         sample["mask"] = sample["mask"][:-1] # prior
         
+        if (sample["mask"].sum(dim=0) < 240).any(): 
+            print('prior not summing to 1', sample['bbox'])
+            print(sample['highres_labels'])
+            
+            
         impervious_idxs_highres_orig = [4,5,6]
         impervious_idx_condesed = [4]
         if self.condense_barren:
@@ -484,26 +494,31 @@ class ChesapeakeCVPRPriorDataModule(LightningDataModule):
             # subtract 1 so it starts with 0
             sample["highres_labels"] = sample["highres_labels"] - 1
             
-        elif self.condense_road_and_impervious:
-            impervious_idx = 5
-            road_idx = 6
-            # recast road idx to impervious
-            sample['highres_labels'][sample['highres_labels'] == road_idx] = impervious_idx
-            # subtract 1
-            sample['highres_labels'] = sample['highres_labels'] - 1
+#         elif self.condense_road_and_impervious:
+#             impervious_idx = 5
+#             road_idx = 6
+#             # recast road idx to impervious
+#             sample['highres_labels'][sample['highres_labels'] == road_idx] = impervious_idx
+#             # subtract 1
+#             sample['highres_labels'] = sample['highres_labels'] - 1
             
-            # add roads to impervious then remove road index
-            sample["mask"][impervious_idx] += sample["mask"][road_idx]
-            # remove road index and nodata
-            sample["mask"] = sample["mask"][1:-1]
+#             # add roads to impervious then remove road index
+#             sample["mask"][impervious_idx] += sample["mask"][road_idx]
+#             # remove road index and nodata
+#             sample["mask"] = sample["mask"][1:-1]
             
         
         # make sure prior is normalized, then smooth
+   #     sample["mask"] = nn.functional.normalize(sample["mask"].float(),p=1,dim=0)
+        
+     #   sample["mask"] = sample["mask"].float()  / 255. + self.prior_smoothing_constant
+      #  sample["mask"] = nn.functional.normalize(sample["mask"].float()  / 255. + self.prior_smoothing_constant,p=1,dim=0)
+    
         sample["mask"] = nn.functional.normalize(sample["mask"].float(),p=1,dim=0)
         sample["mask"] = nn.functional.normalize(sample["mask"] + self.prior_smoothing_constant,p=1,dim=0)
         sample["image"] = sample["image"].float() / 255.0
 
-        sample["mask"] = sample["mask"]#.squeeze()
+    #    sample["mask"] = sample["mask"]#.squeeze()
         sample["highres_labels"] = sample["highres_labels"]#.squeeze()
         return sample
 

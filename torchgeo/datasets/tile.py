@@ -12,7 +12,7 @@ class TileInferenceDataset(Dataset):
         fn,
         chip_size,
         stride,
-        fn_additional=None,
+        fns_additional=None,
         transform=None,
         windowed_sampling=False,
         verbose=False,
@@ -33,7 +33,7 @@ class TileInferenceDataset(Dataset):
             verbose: Flag to control printing stuff.
         """
         self.fn = fn
-        self.fn_additional = fn_additional
+        self.fns_additional = fns_additional
         self.chip_size = chip_size
 
         self.transform = transform
@@ -50,15 +50,17 @@ class TileInferenceDataset(Dataset):
                 self.data = np.rollaxis(f.read(), 0, 3)
         
         # add an additional input, e.g. for the prior
-        if not fn_additional is None:
-            with rasterio.open(self.fn_additional) as f:
-                height, width = f.height, f.width
-                self.num_channels = f.count
-                self.dtype = f.profile["dtype"]
-                if (
-                    not windowed_sampling
-                ):  # if we aren't using windowed sampling, then go ahead and read in all of the data
-                    self.data = np.dstack((self.data, np.rollaxis(f.read(), 0, 3)))
+        if not fns_additional is None:
+            for fn_additional in fns_additional:
+#                print(fn_additional)
+                with rasterio.open(fn_additional) as f:
+                    height, width = f.height, f.width
+                    self.num_channels = f.count
+                    self.dtype = f.profile["dtype"]
+                    if (
+                        not windowed_sampling
+                    ):  # if we aren't using windowed sampling, then go ahead and read in all of the data
+                        self.data = np.dstack((self.data, np.rollaxis(f.read(), 0, 3)))
                 
         self.chip_coordinates = (
             []

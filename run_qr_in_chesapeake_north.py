@@ -9,15 +9,17 @@ import subprocess
 from multiprocessing import Process, Queue
 
 # list of GPU IDs that we want to use, one job will be started for every ID in the list
-GPUS = [2]
+GPUS = [1]#,2,3]
 TEST_MODE = False  # if False then print out the commands to be run, if True then run
 
 # Hyperparameter options
-training_set_options = ["pa","ny","ny+pa"]
+#training_set_options = ["pa","ny","ny+pa"]
+training_set_options = ["ny"]
+
 model_options = ['fcn']
 lr_options = [1e-4]
 
-loss_options = ['qr_forward', 'qr_reverse']
+loss_options = ['qr_forward']#, 'qr_reverse']
 prior_version_options = [
                        'from_cooccurrences_101_31_no_osm_no_buildings',
                         ]
@@ -39,7 +41,7 @@ def do_work(work, gpu_idx):
 def main():
 
     work = Queue()
-
+    print('here')
     for (states_str, model, loss, prior_version, lr, additive_smooth, prior_smooth) in itertools.product(
         training_set_options,
         model_options,
@@ -50,7 +52,7 @@ def main():
         prior_smooth_options
     ):
         experiment_name = f"{states_str}_{model}_{lr}_{loss}_{prior_version}_additive_smooth_{additive_smooth}_prior_smooth_{prior_smooth}"
-
+        
         output_dir = "output/chesepeake_north_qr"
 
         command = (
@@ -87,3 +89,6 @@ def main():
         
     return
 
+
+if __name__ == "__main__":
+    main()

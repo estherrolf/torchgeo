@@ -9,20 +9,21 @@ import subprocess
 from multiprocessing import Process, Queue
 
 # list of GPU IDs that we want to use, one job will be started for every ID in the list
-GPUS = [0]
+GPUS = [1]#,2,3] 
 TEST_MODE = False  # if False then print out the commands to be run, if True then run
 
 # Hyperparameter options
-training_set_options = [
-                        'pittsburgh_pa-2010_1m'
-                       ]
-model_options = ['fcn']#
-lr_options = [1e-3,1e-4,1e-5]
+training_set_options = [#'phoenix_az-2010_1m',
+                        #'durham_nc-2012_1m', 
+                        #'austin_tx-2012_1m',
+                        'pittsburgh_pa-2010_1m']
+model_options = ['fcn']
+lr_options = [1e-4,1e-5]
 
-loss_options = ['qr_forward', 'qr_reverse']
+loss_options = ['qr_forward']#, 'qr_reverse']
 
 prior_version_options = [
-                        'from_cooccurrences_101_31',
+                        'learned_101_31',
                         ]
 
 additive_smooth_options = [1e-4]
@@ -54,10 +55,11 @@ def main():
         prior_smooth_options
     ):
 
-        experiment_name = f"{states_str}_{model}_{lr}_{loss}_{prior_version}_additive_smooth_{additive_smooth}_prior_smooth_{prior_smooth}"
+        experiment_name = f"pa_checkpoint_{states_str}_{model}_{lr}_{loss}_{prior_version}_additive_smooth_{additive_smooth}_prior_smooth_{prior_smooth}"
         
-
-        output_dir = "output/hp_search/ea_from_scratch_model"
+        
+        model_checkpoint = "/home/esther/torchgeo/output/hp_gridsearch_pittsburgh/pittsburgh_pa-2010_1m_fcn_0.001_nll/last.ckpt"
+        output_dir = "output/hp_search_ea_learned_prior"
 
         command = (
             "python train.py program.overwrite=True config_file=conf/enviroatlas_learn_on_prior.yml"
@@ -65,6 +67,7 @@ def main():
             + f" experiment.module.segmentation_model={model}"
             + f" experiment.module.learning_rate={lr}"
             + f" experiment.module.loss={loss}"
+            + f" experiment.module.model_ckpt={model_checkpoint}"
             + f" experiment.module.num_filters=128"
             + f" experiment.datamodule.batch_size=128"
             + f" experiment.datamodule.prior_version={prior_version}"
@@ -75,7 +78,7 @@ def main():
             + f" experiment.datamodule.val_set={val_set}"
             + f" experiment.datamodule.test_set={test_set}"
             + f" program.output_dir={output_dir}"
-            + f" program.log_dir=logs/hp_search/ea_from_scratch"
+            + f" program.log_dir=logs/hp_search_ea_learned_prior"
             + " program.data_dir=/home/esther/torchgeo_data/enviroatlas"
             + " trainer.gpus=[GPU]"
         )

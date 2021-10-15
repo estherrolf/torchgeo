@@ -500,26 +500,11 @@ class ChesapeakeCVPR(GeoDataset):
         )
 
 class ChesapeakeCVPRPrior(GeoDataset):
-    """CVPR 2019 Chesapeake Land Cover dataset. With priors from NLCD, buildings, and OSM
-
-    The `CVPR 2019 Chesapeake Land Cover
-    <https://lila.science/datasets/chesapeakelandcover>`_ dataset contains two layers of
-    NAIP aerial imagery, Landsat 8 leaf-on and leaf-off imagery, Chesapeake Bay land
-    cover labels, NLCD land cover labels, and Microsoft building footprint labels.
-
-    This dataset was organized to accompany the 2019 CVPR paper, "Large Scale
-    High-Resolution Land Cover Mapping with Multi-Resolution Data".
-
-    If you use this dataset in your research, please cite the following paper:
-
-    * https://doi.org/10.1109/cvpr.2019.01301
+    """CVPR 2019 Chesapeake Land Cover dataset as in ChesapeakeCVPRPrior above, 
+       with the addition of the prior built from blurred NLCD
     """
 
-    url = "https://lilablobssc.blob.core.windows.net/lcmcvpr2019/cvpr_chesapeake_landcover.zip"  # noqa: E501
-    filename = "cvpr_chesapeake_landcover.zip"
-    md5 = "0ea5e7cb861be3fb8a06fedaaaf91af9"
-
-    crs = CRS.from_epsg(3857)
+      crs = CRS.from_epsg(3857)
     res = 1
 
     valid_layers = [
@@ -530,16 +515,7 @@ class ChesapeakeCVPRPrior(GeoDataset):
         "nlcd",
         "lc",
         "buildings",
-      #  'prior_v1',
-        'prior_from_cooccurrences_101_51',
-        'prior_from_cooccurrences_101_31',
-        'prior_from_cooccurrences_101_15',
-        'prior_from_cooccurrences_0_0',
-        'prior_from_cooccurrences_101_51_no_osm',
-        'prior_from_cooccurrences_101_15_no_osm_no_buildings',
         'prior_from_cooccurrences_101_31_no_osm_no_buildings',
-        'prior_from_cooccurrences_101_15_no_osm_no_buildings',
-        'prior_from_cooccurrences_0_0_no_osm_no_buildings',
     ]
     states = ["de", "md", "va", "wv", "pa", "ny"]
     splits = (
@@ -625,17 +601,7 @@ class ChesapeakeCVPRPrior(GeoDataset):
                             "lc": row["properties"]["lc"],
                             "nlcd": row["properties"]["nlcd"],
                             "buildings": row["properties"]["buildings"],
-                            "prior_from_cooccurrences_101_51": row["properties"]["lc"].replace('lc','prior_from_cooccurrences_101_51'),
-                            "prior_from_cooccurrences_101_31": row["properties"]["lc"].replace('lc','prior_from_cooccurrences_101_31'),
-                            "prior_from_cooccurrences_101_15": row["properties"]["lc"].replace('lc','prior_from_cooccurrences_101_15'),
-                            "prior_from_cooccurrences_0_0": row["properties"]["lc"].replace('lc','prior_from_cooccurrences_0_0'),
-                            "prior_from_cooccurrences_101_51_no_osm": row["properties"]["lc"].replace('lc','prior_from_cooccurrences_101_51_no_osm'),
-                            "prior_from_cooccurrences_101_51_no_osm_no_buildings": row["properties"]["lc"].replace('lc','prior_from_cooccurrences_101_51_no_osm_no_buildings'),
-                            "prior_from_cooccurrences_101_31_no_osm_no_buildings": row["properties"]["lc"].replace('lc','prior_from_cooccurrences_101_31_no_osm_no_buildings'),
-                            "prior_from_cooccurrences_101_15_no_osm_no_buildings": row["properties"]["lc"].replace('lc','prior_from_cooccurrences_101_15_no_osm_no_buildings'),
-                            "prior_from_cooccurrences_0_0_no_osm_no_buildings": row["properties"]["lc"].replace('lc','prior_from_cooccurrences_0_0_no_osm_no_buildings'),
-                            "prior_from_cooccurrences_101_31_no_osm": row["properties"]["lc"].replace('lc','prior_from_cooccurrences_101_31_no_osm'),
-                            "prior_from_cooccurrences_101_15_no_osm": row["properties"]["lc"].replace('lc','prior_from_cooccurrences_101_15_no_osm')
+                            "prior_from_cooccurrences_101_31_no_osm_no_buildings": row["properties"]["lc"].replace('lc','prior_from_cooccurrences_101_31_no_osm_no_buildings')
                         },
                     )
 
@@ -701,19 +667,11 @@ class ChesapeakeCVPRPrior(GeoDataset):
                 elif layer in ["lc", 
                                "nlcd", 
                                "buildings", 
-                               'prior_v1', 
-                               'prior_from_cooccurrences_101_51',
-                               'prior_from_cooccurrences_101_31',
-                               'prior_from_cooccurrences_101_15',
-                               'prior_from_cooccurrences_0_0',
-                               'prior_from_cooccurrences_101_51_no_osm',
-                               'prior_from_cooccurrences_101_51_no_osm_no_buildings',
-                               'prior_from_cooccurrences_101_31_no_osm_no_buildings',
-                               'prior_from_cooccurrences_101_15_no_osm_no_buildings',
-                               'prior_from_cooccurrences_0_0_no_osm_no_buildings',
-                               'prior_from_cooccurrences_101_31_no_osm',
-                               'prior_from_cooccurrences_101_15_no_osm']:
+                               "prior_from_cooccurrences_101_31_no_osm_no_buildings",
+                            ]:
                     sample["mask"].append(data)
+                    
+     
         else:
             raise IndexError(f"query: {query} spans multiple tiles which is not valid")
 

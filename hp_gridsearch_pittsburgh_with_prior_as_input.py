@@ -43,7 +43,7 @@ def main():
         loss_options,
         additive_smooth_options,
     ):
-        experiment_name = f"{states_str}_{model}_{lr}_{loss}"
+        experiment_name = f"{states_str}_{model}_{lr}_{loss}_qith_prior"
 
         output_dir = "output/hp_gridsearch_pittsburgh_with_prior_as_input"
 

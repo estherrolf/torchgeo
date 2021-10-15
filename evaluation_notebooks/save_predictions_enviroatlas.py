@@ -16,28 +16,25 @@ reload(run_model_forward_and_produce_tifs)
 
 torchgeo_output_dir = '/home/esther/torchgeo/output'
 
-states_to_eval = ['phoenix_az-2010_1m',
+states_to_eval = [#'phoenix_az-2010_1m',
                        'austin_tx-2012_1m',
                        'durham_nc-2012_1m', 
                        'pittsburgh_pa-2010_1m'
                        ]
                        
                        
-loss_to_eval_options = ['qr_forward', 'qr_reverse']
+loss_to_eval_options = ['qr_forward']#, 'qr_reverse']
 prior_version = 'from_cooccurrences_101_31'
 
 include_prior_as_datalayer=False
     
 
-#run_dir = 'ea_from_pittsburgh_model'
-#run_dir = 'ea_from_scratch'
-#run_dir = 'hp_gridsearch_pittsburgh' # we use the best model from the gridsearch here
-#run_dir = 'hp_gridsearch_pittsburgh'
+run_dirs = ['ea_learned_prior']
 
-run_dirs = ['ea_from_pittsburgh_model',
-            'ea_from_scratch',
-            'hp_gridsearch_pittsburgh',
-            'hp_gridsearch_pittsburgh_with_prior_as_input']
+# run_dirs = ['ea_from_pittsburgh_model',
+#             'ea_from_scratch',
+#             'hp_gridsearch_pittsburgh',
+#             'hp_gridsearch_pittsburgh_with_prior_as_input']
             
 
 for run_dir in run_dirs:
@@ -47,7 +44,7 @@ for run_dir in run_dirs:
 
             if run_dir == 'ea_from_pittsburgh_model':
                 run_name = f'pa_checkpoint_{states_str}_fcn_1e-05_{loss}_{prior_version}_additive_smooth_0.0001_prior_smooth_0.0001/'
-                model_kwargs = {'output_smooth':1e-4}
+                model_kwargs = {'output_smooth':1e-4, 'classes': 5, 'num_filters':128, 'in_channels': 4}
 
             elif run_dir == 'ea_from_scratch':
                 if loss == 'qr_forward':
@@ -55,16 +52,21 @@ for run_dir in run_dirs:
                 elif loss == 'qr_reverse':
                     run_name = f'{states_str}_fcn_0.001_{loss}_{prior_version}_additive_smooth_0.0001_prior_smooth_0.0001/'
 
-                model_kwargs = {'output_smooth':1e-4}
+                model_kwargs = {'output_smooth':1e-4, 'classes': 5, 'num_filters':128, 'in_channels': 4}
 
             elif run_dir == 'hp_gridsearch_pittsburgh':    
                 run_name = 'pittsburgh_pa-2010_1m_fcn_0.001_nll/'
-                model_kwargs = {'output_smooth':1e-8}
+                model_kwargs = {'output_smooth':1e-8, 'classes': 5, 'num_filters':128, 'in_channels': 4}
             elif run_dir == 'hp_gridsearch_pittsburgh_with_prior_as_input':    
                 run_name = 'pittsburgh_pa-2010_1m_fcn_0.001_nll_with_prior/'
                 include_prior_as_datalayer=True
                 prior_type = 'prior_from_cooccurrences_101_31'
-                model_kwargs = {'output_smooth':1e-8}
+                model_kwargs = {'output_smooth':1e-8, 'classes': 5, 'num_filters':128, 'in_channels': 9}
+                
+            elif run_dir == 'ea_learned_prior':
+                prior_version = 'learned_101_31'
+                run_name = f'pa_checkpoint_{states_str}_fcn_1e-05_{loss}_{prior_version}_additive_smooth_0.0001_prior_smooth_0.0001/'
+                model_kwargs = {'output_smooth':1e-4, 'classes': 5, 'num_filters':128, 'in_channels': 4}
 
             ckpt_name = 'last.ckpt'
             model_ckpt_fp = os.path.join(torchgeo_output_dir,run_dir,run_name, ckpt_name)

@@ -318,6 +318,7 @@ class EnviroatlasPrior(GeoDataset):
 
     valid_prior_layers = ['prior_whole_city_cooccurrences_101_15', 
                           'prior_from_cooccurrences_101_31',
+                          'prior_learned_101_31',
                           'prior_whole_city_cooccurrences_101_15_scrubs_as_trees',
                            "prior_test_tile_cooccurrences_101_15_scrubs_as_trees"]
  #   valid_prior_layers = [f'p_prior_osm_{version}' for version in valid_prior_versions]
@@ -443,7 +444,9 @@ class EnviroatlasPrior(GeoDataset):
                             "prior_test_tile_cooccurrences_101_15_scrubs_as_trees": row["properties"]["a_naip"].replace("a_naip",
                                     "prior_test_tile_cooccurrences_101_15_scrubs_as_trees"),
                             "prior_from_cooccurrences_101_31":row["properties"]["a_naip"].replace('a_naip',
-                                                                                                       "prior_from_cooccurrences_101_31")
+                                                                                                       "prior_from_cooccurrences_101_31"),
+                            "prior_learned_101_31":row["properties"]["a_naip"].replace('a_naip',
+                                                                                       "prior_learned_101_31")
                         },
                     )
 
@@ -505,6 +508,7 @@ class EnviroatlasPrior(GeoDataset):
                     sample["image"].append(data)
                 elif layer in ["prior_whole_city_cooccurrences_101_15",
                                "prior_from_cooccurrences_101_31",
+                               "prior_learned_101_31",
                                "prior_whole_city_cooccurrences_101_15_scrubs_as_trees",
                                "prior_test_tile_cooccurrences_101_15_scrubs_as_trees"]:
                     sample["mask"].append(data)  
