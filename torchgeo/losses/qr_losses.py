@@ -3,9 +3,14 @@ import torch as T
 
 def loss_on_prior_simple(logged_output, 
                          target):
-    # inputs: assumes q and r are both valid probablity dists over the c channel
-    # logged NN output = log(q)
-    # target = prior
+    '''QR (forwards) loss on prior.
+    
+    Args:
+        logged_output (torch.Tensor): Log-probabilities of predictions
+        target (torch.Tensor): Prior probabilities
+    Returns:
+        loss (torch.Tensor): Computed loss
+    '''
    
     q = T.exp(logged_output)
     q_bar = q.mean(axis=(0,2,3))
@@ -18,9 +23,14 @@ def loss_on_prior_simple(logged_output,
    
 def loss_on_prior_reversed_kl_simple(logged_output, 
                                       target):
-    # inputs: assumes q and r are both valid probablity dists over the c channel
-    # logged NN output = log(q)
-    # target = prior
+    '''RQ (backwards) loss on prior.
+    
+    Args:
+        logged_output (torch.Tensor): Log-probabilities of predictions
+        target (torch.Tensor): Prior probabilities
+    Returns:
+        loss (torch.Tensor): Computed loss
+    '''
 
     q = T.exp(logged_output)
 
