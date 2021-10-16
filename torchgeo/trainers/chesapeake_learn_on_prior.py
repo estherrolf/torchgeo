@@ -25,10 +25,10 @@ from torchvision.transforms import Compose
 from ..datasets import ChesapeakeCVPRPrior
 from ..samplers import GridGeoSampler, RandomBatchGeoSampler
 from ..models import FCN, FCN_modified
-
+from ..losses import  loss_on_prior_simple, loss_on_prior_reversed_kl_simple
 import sys
+
 sys.path.append('/home/esther/lc-mapping/scripts')
-from nn_functions import cross_entropy_on_prior, loss_on_prior_simple, loss_on_prior_reversed_kl_simple
 import landcover_definitions as lc
 
 
@@ -62,10 +62,9 @@ class ChesapeakeCVPRPriorSegmentationTask(LightningModule):
             self.lc_type = 'chesapeake_4_no_zeros'
             
             
-        elif kwargs['condense_road_and_impervious']:
-            n_classes = 5
-            self.lc_type = 'chesapeake_5'
-            self.ignore_index = None
+        else:
+            print('condense barren must be true to use this trainer')
+            return
         
 
         print('lc type is ', self.lc_type)
@@ -106,7 +105,6 @@ class ChesapeakeCVPRPriorSegmentationTask(LightningModule):
             )
             
         if kwargs["loss"] == "qr_forward":
-           # self.loss = loss_on_prior_simple
             self.loss = loss_on_prior_simple
         elif kwargs["loss"] == "qr_reverse":
             self.loss = loss_on_prior_reversed_kl_simple
@@ -180,9 +178,7 @@ class ChesapeakeCVPRPriorSegmentationTask(LightningModule):
         # by default, the train step logs every `log_every_n_steps` steps where
         # `log_every_n_steps` is a parameter to the `Trainer` object
         self.log("train_loss", loss, on_step=True, on_epoch=False)
-#         self.train_accuracy(y_hat_hard, y_hard)
-#         self.train_iou(y_hat_hard, y_hard)
-        
+
         self.train_accuracy_q(y_hat_hard, y_hr)
         self.train_iou_q(y_hat_hard, y_hr)
         self.train_accuracy_r(r_hat_hard, y_hr)
@@ -221,8 +217,7 @@ class ChesapeakeCVPRPriorSegmentationTask(LightningModule):
             
         # by default, the test and validation steps only log per *epoch*
         self.log("val_loss", loss)
-#         self.val_accuracy(y_hat_hard, y_hard)
-#         self.val_iou(y_hat_hard, y_hard)
+
         self.val_accuracy_q(y_hat_hard, y_hr)
         self.val_iou_q(y_hat_hard, y_hr)
         
@@ -235,8 +230,7 @@ class ChesapeakeCVPRPriorSegmentationTask(LightningModule):
             img = np.rollaxis(  # convert image to channels last format
                 batch["image"][0].cpu().numpy(), 0, 3
             )
-            # mask = batch["mask"][0].cpu().numpy()
-            # pred = y_hat_hard[0].cpu().numpy()
+
             prior = batch["mask"][0]
             prior_vis = lc.vis_lc(prior.cpu().numpy(), self.lc_type).T.swapaxes(0,1)
             highres_labels_vis = lc.vis_lc(batch["highres_labels"][0].cpu().numpy(), self.lc_type).T.swapaxes(0,1)
@@ -251,11 +245,9 @@ class ChesapeakeCVPRPriorSegmentationTask(LightningModule):
             axs[0].imshow(img[:, :, :3])
             axs[0].set_title('NAIP')
             axs[0].axis("off")
-           # axs[1].imshow(mask_vis, vmin=0, vmax=6, cmap=CMAP, interpolation="none")
             axs[1].imshow(prior_vis, interpolation="none")
             axs[1].set_title('prior')
             axs[1].axis("off")
-           # axs[2].imshow(pred_vis, vmin=0, vmax=6, cmap=CMAP, interpolation="none")
             axs[2].imshow(pred_vis, interpolation="none")
             axs[2].set_title('q()')
             axs[2].axis("off")
@@ -306,8 +298,6 @@ class ChesapeakeCVPRPriorSegmentationTask(LightningModule):
             
         # by default, the test and validation steps only log per *epoch*
         self.log("test_loss", loss)
-    #    self.test_accuracy(y_hat_hard, y_hard)
-     #   self.test_iou(y_hat_hard, y_hard)
         self.test_accuracy_q(y_hat_hard, y_hr)
         self.test_iou_q(y_hat_hard, y_hr)
         self.test_accuracy_r(r_hat_hard, y_hr)
@@ -381,12 +371,6 @@ class ChesapeakeCVPRPriorDataModule(LightningDataModule):
         
         states = states_str.split('+')
         pix_to_m_scale = 2.0
-#         for state in states:
-#             assert state in ["md", "de", "ny", "pa", "va", "wv"]
-#             if state in ["ny","pa"]:
-# #                 # these sometimes don't fit with just 2
-#                  pix_to_m_scale = 8.
-            
 
         self.root_dir = root_dir
         self.states = states
@@ -396,7 +380,6 @@ class ChesapeakeCVPRPriorDataModule(LightningDataModule):
         print(self.patches_per_tile, ' patches_per_tile')
         self.patch_size = patch_size
         self.original_patch_size = 512
-      #  self.original_patch_size = int(patch_size * pix_to_m_scale)
         self.batch_size = batch_size
         print(self.batch_size, ' batch size')
         self.num_workers = num_workers
@@ -484,6 +467,7 @@ class ChesapeakeCVPRPriorDataModule(LightningDataModule):
             # subtract 1 so it starts with 0
             sample["highres_labels"] = sample["highres_labels"] - 1
             
+        # note: we never use this option in the experiments
         elif self.condense_road_and_impervious:
             impervious_idx = 5
             road_idx = 6
@@ -585,7 +569,6 @@ class ChesapeakeCVPRPriorDataModule(LightningDataModule):
             self.train_dataset,
             batch_sampler=sampler,  # type: ignore[arg-type]
             num_workers=self.num_workers,
-         #   pin_memory=False,
         )
 
     def val_dataloader(self) -> DataLoader[Any]:
@@ -615,5 +598,4 @@ class ChesapeakeCVPRPriorDataModule(LightningDataModule):
             batch_size= 16, #self.batch_size // 2,
             sampler=sampler,  # type: ignore[arg-type]
             num_workers=self.num_workers,
-  #          pin_memory=False,
         )
