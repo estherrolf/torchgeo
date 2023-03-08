@@ -5,20 +5,24 @@
 
 import glob
 import os
-from typing import Callable, Dict, List, Optional, Sequence
+from typing import Any, Callable, Dict, List, Optional, Sequence, cast
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pyproj
 import rasterio
 import torch
 from matplotlib.figure import Figure
 from torch import Tensor
+import shapely.geometry
+import shapely.ops
+import sys
+from rasterio.crs import CRS
 
-from .geo import NonGeoDataset
-from .utils import download_url, extract_archive
+from .geo import GeoDataset
+from .utils import BoundingBox, download_url, extract_archive
 
-
-class USAVars(NonGeoDataset):
+class USAVars(GeoDataset):
     """USAVars dataset.
 
     The USAVars dataset is reproduction of the dataset used in the paper "`A
@@ -90,6 +94,12 @@ class USAVars(NonGeoDataset):
     }
 
     ALL_LABELS = list(label_urls.keys())
+    
+    # TODO: check on CRS
+    crs = CRS.from_epsg(3857)
+    res = 4.0 # as per documentation above, images are resampled to 4m per pixel 
+    
+    p_src_crs = pyproj.CRS("epsg:3857")
 
     def __init__(
         self,
@@ -99,6 +109,8 @@ class USAVars(NonGeoDataset):
         transforms: Optional[Callable[[Dict[str, Tensor]], Dict[str, Tensor]]] = None,
         download: bool = False,
         checksum: bool = False,
+       # res: Optional[float] = None,
+       # crs: Optional[CRS] = None,
     ) -> None:
         """Initialize a new USAVars dataset instance.
 
@@ -118,7 +130,7 @@ class USAVars(NonGeoDataset):
                 don't match
         """
         self.root = root
-
+        
         assert split in self.split_metadata
         self.split = split
 
@@ -126,12 +138,16 @@ class USAVars(NonGeoDataset):
             assert lab in self.ALL_LABELS
 
         self.labels = labels
-        self.transforms = transforms
+      #  self.transforms = transforms
         self.download = download
         self.checksum = checksum
 
-        self._verify()
 
+        self._verify()
+        
+
+        super().__init__(transforms)
+        
         try:
             import pandas as pd  # noqa: F401
         except ImportError:
@@ -145,30 +161,110 @@ class USAVars(NonGeoDataset):
             lab: pd.read_csv(os.path.join(self.root, lab + ".csv"), index_col="ID")
             for lab in self.labels
         }
+        
+        # merge all label dfs
+        all_df = pd.DataFrame({'ID':{}})
+        for i, (key, df) in enumerate(self.label_dfs.items()):
+            if i == 0:  
+                all_df = all_df.merge(df[['lon','lat',key]], on='ID', how='right')
+            else:
+                all_df = all_df.merge(df[[key]], on='ID', how='inner')
+        
+        self.all_labels_df = all_df
+        
+        # TODO: comment
+        mint: float = 0
+        maxt: float = sys.maxsize
+          
+        missing_fps = []
+        for i, row in all_df.iterrows():
+            if i % 1000 == 0: print(i, end=' ')
+             
+            if i > 2000: continue
+            # for now use the NAIP extents
+            tif_fp = os.path.join(self.root, self.dirname, f'tile_{row.ID}.tif')
+            if os.path.exists(tif_fp):
+                with rasterio.open(tif_fp, 'r') as f:
+                    bds = f.bounds       
+                    minx, maxx = bds.left, bds.right
+                    miny, maxy = bds.bottom, bds.top 
 
-    def __getitem__(self, index: int) -> Dict[str, Tensor]:
-        """Return an index within the dataset.
+                coords = (minx, maxx, miny, maxy, mint, maxt)
+                
+               # labels = np.array([row[self.labels]])
+                try:
+                    self.index.insert(i,coords,
+                                      {'label_df_id': row.ID,
+                                       'img_fn': tif_fp})
+                except: 
+                    print()
+                    print(i, row.ID, coords)
+                    print()
+            else:
+                missing_fps.append(tif_fp)
+                
+        print(len(missing_fps))
+
+       
+    def __getitem__(self, query: BoundingBox) -> Dict[str, Any]:
+        """Retrieve image/labels and metadata indexed by query.
 
         Args:
-            index: index to return
+            query: (minx, maxx, miny, maxy, mint, maxt) coordinates to index
 
         Returns:
-            data and label at that index
+            sample of image/labels and metadata at that index
+
+        Raises:
+            IndexError: if query is not found in the index
         """
-        tif_file = self.files[index]
-        id_ = tif_file[5:-4]
 
-        sample = {
-            "labels": Tensor(
-                [self.label_dfs[lab].loc[id_][lab] for lab in self.labels]
-            ),
-            "image": self._load_image(os.path.join(self.root, "uar", tif_file)),
-        }
+        hits = self.index.intersection(tuple(query), objects=True)
+        tiles_info = cast(List[Dict[str, str]], [hit.object for hit in hits])
 
-        if self.transforms is not None:
-            sample = self.transforms(sample)
+        sample = {"crs": self.crs, "bbox": query}
+        
+        if len(tiles_info) == 0:
+            raise IndexError(
+                f"query: {query} not found in index with bounds: {self.bounds}"
+            )
+        elif len(tiles_info) == 1:
+            tile_info = tiles_info[0]
 
-        return sample
+            minx, maxx, miny, maxy, mint, maxt = query
+            query_box = shapely.geometry.box(minx, miny, maxx, maxy)
+            
+            img_fp = tile_info['img_fn']
+            with rasterio.open(img_fp) as f:
+                dst_crs = f.crs.to_string().lower()
+
+                # todo: do we need to transform?
+                query_geom = shapely.geometry.mapping(
+                    query_box
+                )
+
+                img, _ = rasterio.mask.mask(
+                    f, [query_geom], crop=True, all_touched=True
+                )
+                    
+            sample["image"] = torch.from_numpy(img).float()
+            this_row = self.all_labels_df[self.all_labels_df["ID"] == tile_info["label_df_id"]]
+            labels = this_row[self.labels]
+            sample["labels"] = torch.from_numpy(np.array(labels)).float()
+            centroid_degrees = this_row[['lon','lat']]
+            sample["centroid_degrees"] = torch.from_numpy(np.array(centroid_degrees)).float()
+            
+            
+            
+            if self.transforms is not None:
+                sample = self.transforms(sample)
+
+            return sample
+                                        
+        else:
+            raise IndexError(f"query: {query} spans multiple tiles which is not valid")
+
+   
 
     def __len__(self) -> int:
         """Return the number of data points in the dataset.
@@ -247,6 +343,33 @@ class USAVars(NonGeoDataset):
     def _extract(self) -> None:
         """Extract the dataset."""
         extract_archive(os.path.join(self.root, self.dirname + ".zip"))
+                              
+    def _centroid_to_square_vertices(self, lon: float, lat: float, 
+                                     zoom_orig_imgs: int = 16, 
+                                     numpix_orig_imgs: int = 640 ) -> list:
+        """ Translate centroid latlon (in degrees) to bounding box.
+
+        Rewrite/translation of centroidsToSquareVerticies function in R_utils.R of 
+        https://github.com/Global-Policy-Lab/mosaiks-paper. 
+        
+        Args: TODO""" 
+        
+        # same function and constants as defined in https://github.com/Global-Policy-Lab/mosaiks-paper
+        meters_per_pixel = lambda lat_in: 156543.03392 * cos(lat_in * np.pi / 180.) / (2**zoom_orig_imgs)
+        m_degree = 111 * 1000                      
+        tile_width_meters = meters_per_pixel(lat) * numpix_orig_imgs
+        
+        dely = tile_width_meters / m_degree / 2.
+        delx = tile_width_meters / m_degree / np.cos(lat*np.pi/180) / 2.
+                              
+        return [lon - delx, lat - dely, lon + delx, lat + dely]  
+    
+    def _p_transformer(self, crs: str) -> pyproj.Transformer:
+    
+        p_transformer = pyproj.Transformer.from_crs(
+                self.p_src_crs, pyproj.CRS(crs), always_xy=True
+            ).transform
+        return p_transformer
 
     def plot(
         self,
@@ -264,6 +387,7 @@ class USAVars(NonGeoDataset):
         Returns:
             a matplotlib Figure with the rendered sample
         """
+        
         image = sample["image"][:3].numpy()  # get RGB inds
         image = np.moveaxis(image, 0, 2)
 
@@ -272,13 +396,15 @@ class USAVars(NonGeoDataset):
         axs.axis("off")
 
         if show_labels:
-            labels = [(lab, val) for lab, val in sample.items() if lab != "image"]
-            label_string = ""
-            for lab, val in labels:
-                label_string += f"{lab}={round(val[0].item(), 2)} "
-            axs.set_title(label_string)
+            labels = sample['labels'].numpy().astype('float')[0]
+            title = ""
+            for l,v in zip(self.labels, labels):
+                title += f'{l}={v:.2f}, '
+            axs.set_title(title)
 
         if suptitle is not None:
             plt.suptitle(suptitle)
+            
+            labels= s['labels'].numpy().astype('float')[0]
 
         return fig
