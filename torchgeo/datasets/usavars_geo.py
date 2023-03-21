@@ -22,7 +22,7 @@ from rasterio.crs import CRS
 from .geo import GeoDataset
 from .utils import BoundingBox, download_url, extract_archive
 
-class USAVars(GeoDataset):
+class USAVarsGeo(GeoDataset):
     """USAVars dataset.
 
     The USAVars dataset is reproduction of the dataset used in the paper "`A
@@ -100,6 +100,21 @@ class USAVars(GeoDataset):
     res = 4.0 # as per documentation above, images are resampled to 4m per pixel 
     
     p_src_crs = pyproj.CRS("epsg:3857")
+    tif_crss = np.arange(26910,26920)
+    
+    p_transformers = {
+        f"epsg:{tif_crs}": pyproj.Transformer.from_crs(
+            pyproj.CRS("epsg:3857"), pyproj.CRS(f"epsg:{tif_crs}"), always_xy=True
+        ).transform for tif_crs in tif_crss
+    }
+    
+    index_transformers = {
+        f"epsg:{tif_crs}": pyproj.Transformer.from_crs(
+            pyproj.CRS(f"epsg:{tif_crs}"),pyproj.CRS("epsg:3857"), always_xy=True
+        ).transform for tif_crs in tif_crss
+    }
+  
+   
 
     def __init__(
         self,
@@ -177,33 +192,55 @@ class USAVars(GeoDataset):
         maxt: float = sys.maxsize
           
         missing_fps = []
+        count = 0
         for i, row in all_df.iterrows():
-            if i % 1000 == 0: print(i, end=' ')
-             
-            if i > 2000: continue
+            
+            if i % 5000 == 0: print(i)
+            
             # for now use the NAIP extents
             tif_fp = os.path.join(self.root, self.dirname, f'tile_{row.ID}.tif')
-            if os.path.exists(tif_fp):
+            # only do the files for this split
+            
+            if str(tif_fp.split('/')[-1]) in self.files:
+                
                 with rasterio.open(tif_fp, 'r') as f:
                     bds = f.bounds       
+                    tif_crs = f.crs.to_string().lower()     
                     minx, maxx = bds.left, bds.right
                     miny, maxy = bds.bottom, bds.top 
 
-                coords = (minx, maxx, miny, maxy, mint, maxt)
+#                 buffer = 256
+#                 coords = (minx + buffer, maxx - buffer, miny + buffer, maxy - buffer, mint, maxt)
+ 
+                if np.isnan(bds).any(): continue  
+                # transform to common CRS
+        
+                bb = shapely.geometry.box(minx,miny,maxx,maxy)
+                bb_transformed = shapely.ops.transform(
+                                      self.index_transformers[tif_crs], bb
+                                        ).bounds
+                coords = (bb_transformed[0], bb_transformed[2], bb_transformed[1], bb_transformed[3],
+                          mint, maxt)
                 
-               # labels = np.array([row[self.labels]])
                 try:
-                    self.index.insert(i,coords,
+                    self.index.insert(i, coords,
                                       {'label_df_id': row.ID,
                                        'img_fn': tif_fp})
+                    count += 1
                 except: 
                     print()
                     print(i, row.ID, coords)
                     print()
+                    # so it prints the error message
+                    self.index.insert(i, coords,
+                                      {'label_df_id': row.ID,
+                                       'img_fn': tif_fp})
             else:
                 missing_fps.append(tif_fp)
                 
-        print(len(missing_fps))
+        print(count)
+        
+        self.num_valid_data_pts = count
 
        
     def __getitem__(self, query: BoundingBox) -> Dict[str, Any]:
@@ -228,6 +265,7 @@ class USAVars(GeoDataset):
             raise IndexError(
                 f"query: {query} not found in index with bounds: {self.bounds}"
             )
+            
         elif len(tiles_info) == 1:
             tile_info = tiles_info[0]
 
@@ -237,14 +275,16 @@ class USAVars(GeoDataset):
             img_fp = tile_info['img_fn']
             with rasterio.open(img_fp) as f:
                 dst_crs = f.crs.to_string().lower()
-
-                # todo: do we need to transform?
-                query_geom = shapely.geometry.mapping(
-                    query_box
+                
+                query_box_transformed = shapely.ops.transform(
+                            self.p_transformers[dst_crs], query_box
+                        ).envelope
+                query_geom_transformed = shapely.geometry.mapping(
+                            query_box_transformed
                 )
 
                 img, _ = rasterio.mask.mask(
-                    f, [query_geom], crop=True, all_touched=True
+                    f, [query_geom_transformed], crop=True, all_touched=True
                 )
                     
             sample["image"] = torch.from_numpy(img).float()
@@ -262,6 +302,7 @@ class USAVars(GeoDataset):
             return sample
                                         
         else:
+            print(tiles_info)
             raise IndexError(f"query: {query} spans multiple tiles which is not valid")
 
    
@@ -272,7 +313,8 @@ class USAVars(GeoDataset):
         Returns:
             length of the dataset
         """
-        return len(self.files)
+        #return len(self.files)
+        return self.num_valid_data_pts
 
     def _load_files(self) -> List[str]:
         """Loads file names."""
@@ -344,32 +386,27 @@ class USAVars(GeoDataset):
         """Extract the dataset."""
         extract_archive(os.path.join(self.root, self.dirname + ".zip"))
                               
-    def _centroid_to_square_vertices(self, lon: float, lat: float, 
-                                     zoom_orig_imgs: int = 16, 
-                                     numpix_orig_imgs: int = 640 ) -> list:
-        """ Translate centroid latlon (in degrees) to bounding box.
+#     def _centroid_to_square_vertices(self, lon: float, lat: float, 
+#                                      zoom_orig_imgs: int = 16, 
+#                                      numpix_orig_imgs: int = 640 ) -> list:
+#         """ Translate centroid latlon (in degrees) to bounding box.
 
-        Rewrite/translation of centroidsToSquareVerticies function in R_utils.R of 
-        https://github.com/Global-Policy-Lab/mosaiks-paper. 
+#         Rewrite/translation of centroidsToSquareVerticies function in R_utils.R of 
+#         https://github.com/Global-Policy-Lab/mosaiks-paper. 
         
-        Args: TODO""" 
+#         Args: TODO""" 
         
-        # same function and constants as defined in https://github.com/Global-Policy-Lab/mosaiks-paper
-        meters_per_pixel = lambda lat_in: 156543.03392 * cos(lat_in * np.pi / 180.) / (2**zoom_orig_imgs)
-        m_degree = 111 * 1000                      
-        tile_width_meters = meters_per_pixel(lat) * numpix_orig_imgs
+#         # same function and constants as defined in https://github.com/Global-Policy-Lab/mosaiks-paper
+#         meters_per_pixel = lambda lat_in: 156543.03392 * cos(lat_in * np.pi / 180.) / (2**zoom_orig_imgs)
+#         m_degree = 111 * 1000                      
+#         tile_width_meters = meters_per_pixel(lat) * numpix_orig_imgs
         
-        dely = tile_width_meters / m_degree / 2.
-        delx = tile_width_meters / m_degree / np.cos(lat*np.pi/180) / 2.
+#         dely = tile_width_meters / m_degree / 2.
+#         delx = tile_width_meters / m_degree / np.cos(lat*np.pi/180) / 2.
                               
-        return [lon - delx, lat - dely, lon + delx, lat + dely]  
+#         return [lon - delx, lat - dely, lon + delx, lat + dely]  
     
-    def _p_transformer(self, crs: str) -> pyproj.Transformer:
     
-        p_transformer = pyproj.Transformer.from_crs(
-                self.p_src_crs, pyproj.CRS(crs), always_xy=True
-            ).transform
-        return p_transformer
 
     def plot(
         self,
@@ -391,7 +428,7 @@ class USAVars(GeoDataset):
         image = sample["image"][:3].numpy()  # get RGB inds
         image = np.moveaxis(image, 0, 2)
 
-        fig, axs = plt.subplots(figsize=(10, 10))
+        fig, axs = plt.subplots(figsize=(5, 5))
         axs.imshow(image)
         axs.axis("off")
 
