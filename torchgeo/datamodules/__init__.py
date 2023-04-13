@@ -9,11 +9,13 @@ from .cowc import COWCCountingDataModule
 from .cyclone import TropicalCycloneDataModule
 from .deepglobelandcover import DeepGlobeLandCoverDataModule
 from .etci2021 import ETCI2021DataModule
-from .eurosat import EuroSATDataModule
+from .eurosat import EuroSAT100DataModule, EuroSATDataModule
 from .fair1m import FAIR1MDataModule
 from .geo import GeoDataModule, NonGeoDataModule
 from .gid15 import GID15DataModule
 from .inria import InriaAerialImageLabelingDataModule
+from .l7irish import L7IrishDataModule
+from .l8biome import L8BiomeDataModule
 from .landcoverai import LandCoverAIDataModule
 from .loveda import LoveDADataModule
 from .naip import NAIPChesapeakeDataModule
@@ -21,6 +23,7 @@ from .nasa_marine_debris import NASAMarineDebrisDataModule
 from .oscd import OSCDDataModule
 from .potsdam import Potsdam2DDataModule
 from .resisc45 import RESISC45DataModule
+from .seco import SeasonalContrastS2DataModule
 from .sen12ms import SEN12MSDataModule
 from .so2sat import So2SatDataModule
 from .spacenet import SpaceNet1DataModule
@@ -33,6 +36,8 @@ from .xview import XView2DataModule
 __all__ = (
     # GeoDataset
     "ChesapeakeCVPRDataModule",
+    "L7IrishDataModule",
+    "L8BiomeDataModule",
     "NAIPChesapeakeDataModule",
     # NonGeoDataset
     "BigEarthNetDataModule",
@@ -40,6 +45,7 @@ __all__ = (
     "DeepGlobeLandCoverDataModule",
     "ETCI2021DataModule",
     "EuroSATDataModule",
+    "EuroSAT100DataModule",
     "FAIR1MDataModule",
     "GID15DataModule",
     "InriaAerialImageLabelingDataModule",
@@ -49,6 +55,7 @@ __all__ = (
     "OSCDDataModule",
     "Potsdam2DDataModule",
     "RESISC45DataModule",
+    "SeasonalContrastS2DataModule",
     "SEN12MSDataModule",
     "So2SatDataModule",
     "SpaceNet1DataModule",

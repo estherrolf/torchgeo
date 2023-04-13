@@ -11,6 +11,16 @@ Chesapeake Land Cover
 
 .. autoclass:: ChesapeakeCVPRDataModule
 
+L7 Irish
+^^^^^^^^
+
+.. autoclass:: L7IrishDataModule
+
+L8 Biome
+^^^^^^^^
+
+.. autoclass:: L8BiomeDataModule
+
 NAIP
 ^^^^
 
@@ -43,6 +53,7 @@ EuroSAT
 ^^^^^^^
 
 .. autoclass:: EuroSATDataModule
+.. autoclass:: EuroSAT100DataModule
 
 FAIR1M
 ^^^^^^
@@ -88,6 +99,11 @@ RESISC45
 ^^^^^^^^
 
 .. autoclass:: RESISC45DataModule
+
+Seasonal Contrast
+^^^^^^^^^^^^^^^^^
+
+.. autoclass:: SeasonalContrastS2DataModule
 
 SEN12MS
 ^^^^^^^

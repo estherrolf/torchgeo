@@ -8,10 +8,12 @@
 import os
 from typing import Any, Dict, Tuple, Type, cast
 
-import pytorch_lightning as pl
+import lightning.pytorch as pl
+import torch
+from lightning.pytorch import LightningDataModule, LightningModule, Trainer
+from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
+from lightning.pytorch.loggers import CSVLogger, TensorBoardLogger
 from omegaconf import DictConfig, OmegaConf
-from pytorch_lightning import loggers as pl_loggers
-from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 
 from torchgeo.datamodules import (
     BigEarthNetDataModule,
@@ -45,7 +47,7 @@ from torchgeo.trainers import (
 )
 
 TASK_TO_MODULES_MAPPING: Dict[
-    str, Tuple[Type[pl.LightningModule], Type[pl.LightningDataModule]]
+    str, Tuple[Type[LightningModule], Type[LightningDataModule]]
 ] = {
     "bigearthnet": (MultiLabelClassificationTask, BigEarthNetDataModule),
     "byol": (BYOLTask, ChesapeakeCVPRDataModule),
@@ -165,8 +167,8 @@ def main(conf: DictConfig) -> None:
         Dict[str, Any], OmegaConf.to_object(conf.experiment.datamodule)
     )
 
-    datamodule: pl.LightningDataModule
-    task: pl.LightningModule
+    datamodule: LightningDataModule
+    task: LightningModule
     if task_name in TASK_TO_MODULES_MAPPING:
         task_class, datamodule_class = TASK_TO_MODULES_MAPPING[task_name]
         task = task_class(**task_args)
@@ -176,11 +178,14 @@ def main(conf: DictConfig) -> None:
             f"experiment.task={task_name} is not recognized as a valid task"
         )
 
+    if hasattr(torch, "compile"):
+        task = torch.compile(task)
+
     ######################################
     # Setup trainer
     ######################################
-    tb_logger = pl_loggers.TensorBoardLogger(conf.program.log_dir, name=experiment_name)
-    csv_logger = pl_loggers.CSVLogger(conf.program.log_dir, name=experiment_name)
+    tb_logger = TensorBoardLogger(conf.program.log_dir, name=experiment_name)
+    csv_logger = CSVLogger(conf.program.log_dir, name=experiment_name)
 
     if isinstance(task, ObjectDetectionTask):
         monitor_metric = "val_map"
@@ -195,6 +200,7 @@ def main(conf: DictConfig) -> None:
         dirpath=experiment_dir,
         save_top_k=1,
         save_last=True,
+        mode=mode,
     )
     early_stopping_callback = EarlyStopping(
         monitor=monitor_metric, min_delta=0.00, patience=18, mode=mode
@@ -205,10 +211,7 @@ def main(conf: DictConfig) -> None:
     trainer_args["callbacks"] = [checkpoint_callback, early_stopping_callback]
     trainer_args["logger"] = [tb_logger, csv_logger]
     trainer_args["default_root_dir"] = experiment_dir
-    trainer = pl.Trainer(**trainer_args)
-
-    if trainer_args.get("auto_lr_find"):
-        trainer.tune(model=task, datamodule=datamodule)
+    trainer = Trainer(**trainer_args)
 
     ######################################
     # Run experiment

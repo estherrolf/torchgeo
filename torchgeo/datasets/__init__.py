@@ -35,7 +35,7 @@ from .enviroatlas import EnviroAtlas
 from .esri2020 import Esri2020
 from .etci2021 import ETCI2021
 from .eudem import EUDEM
-from .eurosat import EuroSAT
+from .eurosat import EuroSAT, EuroSAT100
 from .fair1m import FAIR1M
 from .forestdamage import ForestDamage
 from .gbif import GBIF
@@ -53,6 +53,8 @@ from .globbiomass import GlobBiomass
 from .idtrees import IDTReeS
 from .inaturalist import INaturalist
 from .inria import InriaAerialImageLabeling
+from .l7irish import L7Irish
+from .l8biome import L8Biome
 from .landcoverai import LandCoverAI, LandCoverAIBase, LandCoverAIGeo
 from .landsat import (
     Landsat,
@@ -137,6 +139,8 @@ __all__ = (
     "GBIF",
     "GlobBiomass",
     "INaturalist",
+    "L7Irish",
+    "L8Biome",
     "LandCoverAIBase",
     "LandCoverAIGeo",
     "Landsat",
@@ -169,6 +173,7 @@ __all__ = (
     "EnviroAtlas",
     "ETCI2021",
     "EuroSAT",
+    "EuroSAT100",
     "FAIR1M",
     "ForestDamage",
     "GID15",
